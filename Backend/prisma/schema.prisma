@@ -55,6 +55,14 @@ model User {
   registrationDate DateTime @default(now())
   approved       Boolean  @default(false) // Indicates if the account is approved by you
   profilePictureUrl String? // URL to the user's profile picture
+  isAdmin             Boolean @default(false)
+  
+  // NEW: Notification and badge count fields
+  unreadPostsCount    Int @default(0)    // Count of unread posts
+  unreadMessagesCount Int @default(0)    // Count of unread messages
+  lastPostViewedAt    DateTime? // Track when user last viewed posts feed
+  
+  // Existing relations
   cart            Cart?
   shippingAddresses ShippingAddress[]
   orders          Order[]
@@ -64,7 +72,98 @@ model User {
   posts                Post[]
   likes                Like[]
   comments             Comment[]
-  isAdmin             Boolean @default(false)
+  
+  // NEW: Notification relations
+  pushTokens              PushToken[]
+  notificationSettings    NotificationSettings?
+  sentNotifications       Notification[]       @relation("NotificationSender")
+  receivedNotifications   Notification[]       @relation("NotificationReceiver")
+}
+
+// NEW: Store Expo push tokens for each user/device
+model PushToken {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    Int
+  token     String   @unique // Expo push token
+  deviceId  String?  // Optional device identifier
+  platform  String?  // "ios" or "android"
+  isActive  Boolean  @default(true) // Allow disabling tokens
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token]) // Prevent duplicate tokens per user
+}
+
+// NEW: User notification preferences
+model NotificationSettings {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    Int      @unique
+  
+  // Notification type preferences
+  enablePostNotifications    Boolean @default(true)  // Notify on new posts
+  enableMessageNotifications Boolean @default(true)  // Notify on new messages
+  enableCommentNotifications Boolean @default(true)  // Notify on new comments on their posts
+  enableLikeNotifications    Boolean @default(true)  // Notify on new likes on their posts
+  
+  // Timing preferences
+  quietHoursStart   String? // e.g., "22:00" for 10 PM
+  quietHoursEnd     String? // e.g., "08:00" for 8 AM
+  timezone          String? // User's timezone
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// NEW: Track all notifications sent
+model Notification {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Who sent and who receives
+  senderId    Int?     // Null for system notifications
+  receiverId  Int
+  
+  // Notification content
+  title       String
+  body        String
+  type        NotificationType
+  
+  // Related content
+  postId         Int? // If notification is about a post
+  messageId      Int? // If notification is about a message
+  conversationId Int? // If notification is about a conversation
+  
+  // Tracking
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  
+  // Push notification tracking
+  pushSent    Boolean  @default(false)
+  pushSentAt  DateTime?
+  pushError   String?  // Store error if push failed
+  
+  sender   User? @relation("NotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
+  receiver User  @relation("NotificationReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  post     Post? @relation(fields: [postId], references: [id], onDelete: Cascade)
+  message  Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([receiverId, isRead]) // For efficient unread queries
+  @@index([type, createdAt])    // For efficient type-based queries
+}
+
+// NEW: Notification types enum
+enum NotificationType {
+  NEW_POST          // Someone created a new post
+  NEW_MESSAGE       // Someone sent you a message
+  NEW_COMMENT       // Someone commented on your post
+  NEW_LIKE          // Someone liked your post
+  MENTION           // Someone mentioned you (future feature)
+  SYSTEM            // System announcements
 }
 
 model Conversation {
@@ -75,6 +174,7 @@ model Conversation {
 
   messages Message[]
   members  ConversationMember[]
+  notifications Notification[] // NEW: Link notifications to conversations
 }
 
 model ConversationMember {
@@ -83,6 +183,9 @@ model ConversationMember {
   updatedAt    DateTime @updatedAt
   userId         Int
   conversationId Int
+  
+  // NEW: Track read status per conversation
+  lastReadAt     DateTime @default(now()) // When user last read this conversation
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -101,6 +204,9 @@ model Message {
   conversationId Int?
   imageAttachments ImageAttachment[]
   videoAttachments VideoAttachment[]
+  
+  // NEW: Link notifications to messages
+  notifications Notification[]
 
   sender       User?         @relation("DirectSender", fields: [senderId], references: [id], onDelete: Cascade)
   receiver     User?         @relation("DirectReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
@@ -140,6 +246,9 @@ model Post {
   comments      Comment[]
   imageAttachments PostImageAttachment[]
   videoAttachments PostVideoAttachment[]
+  
+  // NEW: Link notifications to posts
+  notifications Notification[]
 
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }

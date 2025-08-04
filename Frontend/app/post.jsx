@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, FlatList, ActivityIndicator, Image, TextInput, Modal, ScrollView, Dimensions, Alert, StatusBar } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Link, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNotifications } from '../hooks/useNotifications';
+
+// REMOVED: const NotificationService = require("../services/notificationService");
+// This was causing the issue! You can't use require() in React Native frontend
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -161,8 +165,14 @@ const Post = () => {
   
   const router = useRouter();
 
+  // FIX: Use ref to track if posts have been marked as read to avoid multiple calls
+  const postsMarkedAsReadRef = useRef(false);
+
+  // FIX: Use notification context but be careful with dependencies
+  const { markPostsAsRead, unreadCounts } = useNotifications();
+
   // Migration function to move tokens from AsyncStorage to SecureStore
-  const migrateFromAsyncStorage = async () => {
+  const migrateFromAsyncStorage = useCallback(async () => {
     try {
       const existingToken = await AsyncStorage.getItem('authToken');
       
@@ -174,9 +184,9 @@ const Post = () => {
     } catch (error) {
       console.error('Error migrating token:', error);
     }
-  };
+  }, []);
 
-  const getToken = async () => {
+  const getToken = useCallback(async () => {
     try {
       let token = await SecureStore.getItemAsync('authToken');
       
@@ -190,8 +200,9 @@ const Post = () => {
       console.error('Error retrieving token from SecureStore:', error);
       return null;
     }
-  };
+  }, [migrateFromAsyncStorage]);
 
+  // FIX: Stable getUserId function
   const getUserId = useCallback(async () => {
     const token = await getToken();
     if (token) {
@@ -211,8 +222,9 @@ const Post = () => {
     } else {
       setCurrentUserId(null);
     }
-  }, []);
+  }, [getToken]);
 
+  // FIX: Stable fetchPosts function
   const fetchPosts = useCallback(async (page = 1, isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
@@ -293,8 +305,9 @@ const Post = () => {
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, []);
+  }, [getToken]);
 
+  // FIX: Stable loadMorePosts function
   const loadMorePosts = useCallback(() => {
     if (!loadingMore && hasMore) {
       const nextPage = currentPage + 1;
@@ -303,12 +316,37 @@ const Post = () => {
     }
   }, [currentPage, hasMore, loadingMore, fetchPosts]);
 
-  useEffect(() => {
-    fetchPosts(1, true);
-    getUserId();
-  }, [getUserId]);
+  // FIX: Separate function for marking posts as read
+  const handleMarkPostsAsRead = useCallback(async () => {
+    if (postsMarkedAsReadRef.current) return; // Already marked
+    
+    try {
+      await markPostsAsRead();
+      postsMarkedAsReadRef.current = true;
+      console.log('Posts marked as read');
+    } catch (error) {
+      console.error('Error marking posts as read:', error);
+    }
+  }, [markPostsAsRead]);
 
-  const handleLike = async (postId) => {
+  // FIX: Split useEffect into separate effects with proper dependencies
+  useEffect(() => {
+    // Initial load - only run once
+    console.log('Initial load useEffect running');
+    getUserId();
+    fetchPosts(1, true);
+  }, []); // Empty dependency array - only run once on mount
+
+  // FIX: Separate effect for marking posts as read
+  useEffect(() => {
+    if (posts.length > 0 && !loading && !postsMarkedAsReadRef.current) {
+      console.log('Setting up timer to mark posts as read');
+      const timer = setTimeout(handleMarkPostsAsRead, 5000); // Increased from 2000 to 5000ms
+      return () => clearTimeout(timer);
+    }
+  }, [posts.length, loading, handleMarkPostsAsRead]);
+
+  const handleLike = useCallback(async (postId) => {
     const token = await getToken();
     if (!token) {
       console.warn("User not authenticated, cannot like.");
@@ -341,9 +379,9 @@ const Post = () => {
     } catch (error) {
       console.error("Error liking/unliking post:", error);
     }
-  };
+  }, [getToken]);
 
-  const handlePostComment = async (postId) => {
+  const handlePostComment = useCallback(async (postId) => {
     const token = await getToken();
     if (!token) {
       console.warn("User not authenticated, cannot comment.");
@@ -387,9 +425,9 @@ const Post = () => {
     } finally {
       setIsSubmittingComment((prev) => ({ ...prev, [postId]: false }));
     }
-  };
+  }, [newCommentText, getToken]);
 
-  const handleDeleteComment = async (postId, commentId) => {
+  const handleDeleteComment = useCallback(async (postId, commentId) => {
     Alert.alert(
       "Delete Comment",
       "Are you sure you want to delete this comment?",
@@ -442,9 +480,9 @@ const Post = () => {
         },
       ]
     );
-  };
+  }, [getToken]);
 
-  const handleDeletePost = async (postId) => {
+  const handleDeletePost = useCallback(async (postId) => {
     Alert.alert(
       "Delete Post",
       "Are you sure you want to delete this post?",
@@ -491,9 +529,9 @@ const Post = () => {
         },
       ]
     );
-  };
+  }, [getToken]);
 
-  const openImageModal = (images) => {
+  const openImageModal = useCallback((images) => {
     const modalImageUrls = images.map(img => {
       const baseUrl = 'https://bh-alumni-social-media-app.onrender.com/uploads/';
       // Handle both new format (object) and old format (string)
@@ -507,12 +545,12 @@ const Post = () => {
     });
     setModalImages(modalImageUrls);
     setModalVisible(true);
-  };
+  }, []);
 
-  const closeImageModal = () => {
+  const closeImageModal = useCallback(() => {
     setModalVisible(false);
     setModalImages([]);
-  };
+  }, []);
 
   // Memoized render item for better performance
   const renderItem = useCallback(({ item, index }) => {
@@ -653,13 +691,16 @@ const Post = () => {
     index,
   }), []);
 
-  const onRefresh = () => {
+  // FIX: Stable onRefresh function
+  const onRefresh = useCallback(() => {
+    console.log('onRefresh called');
+    postsMarkedAsReadRef.current = false; // Reset the flag
     fetchPosts(1, true);
     getUserId();
-  };
+  }, [fetchPosts, getUserId]);
 
   // Render footer for loading more
-  const renderFooter = () => {
+  const renderFooter = useCallback(() => {
     if (!loadingMore) return null;
     return (
       <View style={styles.loadingMore}>
@@ -667,7 +708,7 @@ const Post = () => {
         <Text style={styles.loadingMoreText}>Loading more posts...</Text>
       </View>
     );
-  };
+  }, [loadingMore]);
 
   if (loading) {
     return (
@@ -743,51 +784,51 @@ const Post = () => {
       </TouchableOpacity>
 
       {/* Image Modal */}
-   <Modal
-  animationType="slide"
-  transparent={true}
-  visible={modalVisible}
-  onRequestClose={closeImageModal}
->
-  <View style={styles.modalContainer}>
-    <ScrollView
-      style={styles.modalScrollView}
-      horizontal
-      pagingEnabled
-      showsHorizontalScrollIndicator={false}
-    >
-      {modalImages.map((image, index) => (
-        <View key={index} style={styles.modalPage}>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={closeImageModal}
+      >
+        <View style={styles.modalContainer}>
           <ScrollView
-            style={styles.zoomContainer}
-            contentContainerStyle={styles.zoomContentContainer}
-            showsVerticalScrollIndicator={false}
+            style={styles.modalScrollView}
+            horizontal
+            pagingEnabled
             showsHorizontalScrollIndicator={false}
-            maximumZoomScale={3}
-            minimumZoomScale={1}
-            bounces={false}
-            bouncesZoom={true}
-            centerContent={true}
           >
-            <Image
-              source={{ 
-                uri: image.uri,
-                cache: 'force-cache'
-              }}
-              style={styles.modalImage}
-              resizeMode="contain"
-              resizeMethod="resize"
-              fadeDuration={200}
-            />
+            {modalImages.map((image, index) => (
+              <View key={index} style={styles.modalPage}>
+                <ScrollView
+                  style={styles.zoomContainer}
+                  contentContainerStyle={styles.zoomContentContainer}
+                  showsVerticalScrollIndicator={false}
+                  showsHorizontalScrollIndicator={false}
+                  maximumZoomScale={3}
+                  minimumZoomScale={1}
+                  bounces={false}
+                  bouncesZoom={true}
+                  centerContent={true}
+                >
+                  <Image
+                    source={{ 
+                      uri: image.uri,
+                      cache: 'force-cache'
+                    }}
+                    style={styles.modalImage}
+                    resizeMode="contain"
+                    resizeMethod="resize"
+                    fadeDuration={200}
+                  />
+                </ScrollView>
+              </View>
+            ))}
           </ScrollView>
+          <TouchableOpacity style={styles.closeButton} onPress={closeImageModal}>
+            <Text style={styles.closeButtonText}>Close</Text>
+          </TouchableOpacity>
         </View>
-      ))}
-    </ScrollView>
-    <TouchableOpacity style={styles.closeButton} onPress={closeImageModal}>
-      <Text style={styles.closeButtonText}>Close</Text>
-    </TouchableOpacity>
-  </View>
-</Modal>
+      </Modal>
     </View>
   );
 };
@@ -919,7 +960,6 @@ const styles = StyleSheet.create({
   postImage: {
     width: '100%',
     height: '100%',
-  
   },
   thumbnailImage: {
     position: 'absolute',
@@ -1136,12 +1176,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.9)',
   },
- 
-    zoomContainer: {
+  zoomContainer: {
     flex: 1,
     width: screenWidth,
   },
-   zoomContentContainer: {
+  zoomContentContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1175,7 +1214,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
- modalImage: {
+  modalImage: {
     width: screenWidth * 0.95,
     height: screenHeight * 0.7,
   },

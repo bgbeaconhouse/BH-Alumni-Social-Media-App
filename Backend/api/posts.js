@@ -7,6 +7,9 @@ const path = require('path');
 const fs = require('fs').promises;
 const sharp = require('sharp'); // Add Sharp for image optimization
 
+// NEW: Import notification service
+const NotificationService = require("../services/notificationService");
+
 // Configure Multer for disk storage
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -43,26 +46,38 @@ const upload = multer({
 }).array('media', 10);
 
 router.post("/", verifyToken, upload, async (req, res, next) => {
+    // 🔥 DEBUG LOGGING - Add extensive logging to see what's happening
+    console.log('🆕🆕🆕 POST /api/posts route HIT!');
+    console.log('🆕 User ID:', req.userId);
+    console.log('🆕 Content:', req.body.content);
+    console.log('🆕 Files:', req.files ? req.files.length : 0);
+    console.log('🆕 Request came from IP:', req.ip);
+    console.log('🆕 Request headers:', req.headers);
+    
     try {
         const { content } = req.body;
         const files = req.files;
         const userId = req.userId;
 
-        console.log("Request body:", req.body);
-        console.log("Uploaded files:", files);
+        console.log("🆕 Request body:", req.body);
+        console.log("🆕 Uploaded files:", files);
 
         if (!content && (!files || files.length === 0)) {
+            console.log('🆕 ERROR: Post must have either content or media');
             return res.status(400).json({ error: "Post must have either content or media." });
         }
 
+        console.log('🆕 Creating post in database...');
         const post = await prisma.post.create({
             data: {
                 content: content,
                 authorId: userId,
             },
         });
+        console.log('🆕 POST CREATED IN DATABASE:', post.id);
 
         if (files && files.length > 0) {
+            console.log('🆕 Processing files...');
             const imageAttachments = [];
             const videoAttachments = [];
 
@@ -104,9 +119,9 @@ router.post("/", verifyToken, upload, async (req, res, next) => {
                             })
                             .toFile(thumbnailFilePath);
 
-                        console.log(`Created optimized versions for ${file.filename}`);
+                        console.log(`🆕 Created optimized versions for ${file.filename}`);
                     } catch (optimizationError) {
-                        console.error("Image optimization failed:", optimizationError);
+                        console.error("🆕 Image optimization failed:", optimizationError);
                     }
 
                     // Save to database with current schema (only original URL)
@@ -120,18 +135,21 @@ router.post("/", verifyToken, upload, async (req, res, next) => {
             }
 
             if (imageAttachments.length > 0) {
+                console.log('🆕 Saving image attachments to database...');
                 await prisma.postImageAttachment.createMany({
                     data: imageAttachments,
                 });
             }
 
             if (videoAttachments.length > 0) {
+                console.log('🆕 Saving video attachments to database...');
                 await prisma.postVideoAttachment.createMany({
                     data: videoAttachments,
                 });
             }
         }
 
+        console.log('🆕 Fetching populated post...');
         const populatedPost = await prisma.post.findUnique({
             where: { id: post.id },
             include: {
@@ -140,11 +158,33 @@ router.post("/", verifyToken, upload, async (req, res, next) => {
                 videoAttachments: true,
             },
         });
+        console.log('🆕 Populated post fetched:', {
+            id: populatedPost.id,
+            authorId: populatedPost.authorId,
+            authorName: `${populatedPost.author.firstName} ${populatedPost.author.lastName}`
+        });
 
+        // 🔥 CRITICAL: Send notifications to all users about the new post
+        console.log('🆕 About to send notifications for post:', post.id);
+        console.log('🆕 NotificationService available:', typeof NotificationService);
+        console.log('🆕 sendNewPostNotification method available:', typeof NotificationService.sendNewPostNotification);
+        
+        try {
+            console.log('🆕 Calling NotificationService.sendNewPostNotification...');
+            await NotificationService.sendNewPostNotification(populatedPost, populatedPost.author);
+            console.log('🆕 New post notifications sent successfully');
+        } catch (notificationError) {
+            console.error('🆕 ERROR sending post notification:', notificationError);
+            console.error('🆕 Notification error stack:', notificationError.stack);
+            // Don't fail the post creation if notifications fail
+        }
+
+        console.log('🆕 Responding with created post');
         res.status(201).json(populatedPost);
 
     } catch (error) {
-        console.error("Error creating post:", error);
+        console.error("🆕 ERROR creating post:", error);
+        console.error("🆕 Error stack:", error.stack);
         next(error);
     }
 });
@@ -286,6 +326,31 @@ router.post("/:postId/comments", verifyToken, async (req, res, next) => {
                 },
             },
         });
+
+        // NEW: Send notification to post author about the new comment
+        try {
+            console.log('Sending new comment notification...');
+            
+            // Get the post and commenter info
+            const post = await prisma.post.findUnique({
+                where: { id: parseInt(postId) },
+                include: { author: true }
+            });
+
+            const commenter = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { id: true, firstName: true, lastName: true }
+            });
+
+            if (post && commenter) {
+                await NotificationService.sendNewCommentNotification(newComment, commenter, post);
+                console.log('New comment notification sent successfully');
+            }
+        } catch (notificationError) {
+            console.error('Error sending comment notification:', notificationError);
+            // Don't fail the comment creation if notifications fail
+        }
+
         res.status(201).json(newComment);
     } catch (error) {
         console.error("Error creating comment:", error);
@@ -349,12 +414,38 @@ router.post("/:postId/like", verifyToken, async (req, res, next) => {
             });
             res.status(200).json({ message: "Post unliked", liked: false, likes: updatedLikes });
         } else {
-            await prisma.like.create({
+            // Create the new like
+            const newLike = await prisma.like.create({
                 data: {
                     postId: parseInt(postId),
                     userId: userId,
                 },
             });
+
+            // NEW: Send notification to post author about the new like
+            try {
+                console.log('Sending new like notification...');
+                
+                // Get the post and liker info
+                const post = await prisma.post.findUnique({
+                    where: { id: parseInt(postId) },
+                    include: { author: true }
+                });
+
+                const liker = await prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { id: true, firstName: true, lastName: true }
+                });
+
+                if (post && liker) {
+                    await NotificationService.sendNewLikeNotification(newLike, liker, post);
+                    console.log('New like notification sent successfully');
+                }
+            } catch (notificationError) {
+                console.error('Error sending like notification:', notificationError);
+                // Don't fail the like creation if notifications fail
+            }
+
             const updatedLikes = await prisma.like.findMany({
                 where: { postId: parseInt(postId) },
             });

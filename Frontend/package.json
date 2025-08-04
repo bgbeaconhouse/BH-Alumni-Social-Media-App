@@ -13,7 +13,7 @@
     "@stripe/stripe-react-native": "0.45.0",
     "expo": "53.0.11",
     "expo-av": "~15.1.6",
-    "expo-constants": "~17.1.6",
+    "expo-constants": "~17.1.7",
     "expo-file-system": "~18.1.10",
     "expo-image-picker": "~16.1.4",
     "expo-linking": "~7.1.5",
@@ -29,7 +29,9 @@
     "react-native-screens": "~4.11.1",
     "stream-browserify": "^3.0.0",
     "ws": "^8.18.2",
-    "expo-dev-client": "~5.2.0"
+    "expo-dev-client": "~5.2.0",
+    "expo-notifications": "~0.31.4",
+    "expo-device": "~7.1.4"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"

@@ -1,11 +1,28 @@
 import { StyleSheet, Text, View, TouchableOpacity, Alert, StatusBar, Platform } from 'react-native';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNotifications } from '../hooks/useNotifications';
 
 const Home = () => {
   const router = useRouter();
+  
+  // Notification functionality
+  const { 
+    totalBadgeCount, 
+    unreadCounts,
+    isInitialized, 
+    initializeNotifications,
+    handleLogout: cleanupNotifications 
+  } = useNotifications();
+
+  // Initialize notifications when home screen loads (after login)
+  useEffect(() => {
+    if (!isInitialized) {
+      initializeNotifications();
+    }
+  }, [isInitialized, initializeNotifications]);
 
   const logout = async () => {
     Alert.alert(
@@ -21,6 +38,9 @@ const Home = () => {
           style: "destructive",
           onPress: async () => {
             try {
+              // Clean up notifications first
+              await cleanupNotifications();
+              
               // Remove token from SecureStore
               await SecureStore.deleteItemAsync('authToken');
               
@@ -61,29 +81,48 @@ const Home = () => {
           <Text style={styles.logo}>BH</Text>
           <Text style={styles.welcomeText}>Welcome Back</Text>
           <Text style={styles.subtitle}>Your recovery community</Text>
+          
+          {/* Badge Count Display */}
+          {totalBadgeCount > 0 && (
+            <View style={styles.badgeContainer}>
+              <Text style={styles.badgeText}>
+                {totalBadgeCount} unread notification{totalBadgeCount !== 1 ? 's' : ''}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Menu Options */}
         <View style={styles.menuSection}>
           <TouchableOpacity style={[styles.menuButton, styles.primaryButton]}>
             <Link href="/post" style={styles.primaryMenuLink}>
-              <Text style={styles.primaryMenuText}>Posts</Text>
+              <View style={styles.menuItemContainer}>
+                <Text style={styles.primaryMenuText}>Posts</Text>
+                {unreadCounts.unreadPostsCount > 0 && (
+                  <View style={styles.menuBadge}>
+                    <Text style={styles.menuBadgeText}>
+                      {unreadCounts.unreadPostsCount > 99 ? '99+' : unreadCounts.unreadPostsCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </Link>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.menuButton}>
             <Link href="/messaging" style={styles.menuLink}>
-              <Text style={styles.menuText}>Messages</Text>
+              <View style={styles.menuItemContainer}>
+                <Text style={styles.menuText}>Messages</Text>
+                {unreadCounts.unreadMessagesCount > 0 && (
+                  <View style={[styles.menuBadge, styles.secondaryMenuBadge]}>
+                    <Text style={styles.secondaryMenuBadgeText}>
+                      {unreadCounts.unreadMessagesCount > 99 ? '99+' : unreadCounts.unreadMessagesCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </Link>
           </TouchableOpacity>
-
-          {/* Shop button commented out
-          <TouchableOpacity style={styles.menuButton}>
-            <Link href="/shop" style={styles.menuLink}>
-              <Text style={styles.menuText}>Shop</Text>
-            </Link>
-          </TouchableOpacity>
-          */}
         </View>
       </View>
 
@@ -147,6 +186,19 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     letterSpacing: 0.5,
   },
+  badgeContainer: {
+    marginTop: 16,
+    backgroundColor: '#e74c3c',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '300',
+    letterSpacing: 0.5,
+  },
   menuSection: {
     width: '100%',
     maxWidth: 280,
@@ -173,6 +225,12 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
   },
+  menuItemContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
   menuText: {
     color: '#2c3e50',
     fontSize: 16,
@@ -185,6 +243,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '300',
     letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  menuBadge: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  menuBadgeText: {
+    color: '#e74c3c',
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  secondaryMenuBadge: {
+    backgroundColor: '#e74c3c',
+  },
+  secondaryMenuBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '600',
     textAlign: 'center',
   },
   footer: {

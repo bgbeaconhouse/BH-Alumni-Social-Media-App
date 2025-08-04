@@ -9,6 +9,9 @@ const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs').promises;
 const sharp = require('sharp'); // Import sharp for image processing
 
+// NEW: Import notification service
+const NotificationService = require("../services/notificationService");
+
 // Export a function that accepts wss and connectedClients
 module.exports = (wss, connectedClients, app) => { // <-- Added 'app' parameter to attach static middleware
 
@@ -51,8 +54,6 @@ module.exports = (wss, connectedClients, app) => { // <-- Added 'app' parameter 
     // Remove limits entirely - let compression handle the size
 }).array('media', 5);
 
-
-
 const compressVideo = (inputPath, outputPath) => {
     return new Promise((resolve, reject) => {
         ffmpeg(inputPath)
@@ -91,10 +92,6 @@ const compressVideo = (inputPath, outputPath) => {
     } else {
         console.warn("Express app instance not provided. Static file serving and caching headers might not be configured correctly.");
     }
-
-
-
-
 
     // Get all conversations of user
     router.get("/", verifyToken, async (req, res, next) => {
@@ -213,7 +210,6 @@ const compressVideo = (inputPath, outputPath) => {
         }
     });
 
-
     // Send a new message to a conversation
     router.post("/:conversationId/messages", verifyToken, upload, async (req, res, next) => {
         try {
@@ -291,7 +287,17 @@ const compressVideo = (inputPath, outputPath) => {
                 },
             });
 
-            // --- NEW: Broadcast the message via WebSocket after saving ---
+            // NEW: Send notifications to conversation members about the new message
+            try {
+                console.log('Sending new message notifications...');
+                await NotificationService.sendNewMessageNotification(populatedMessage, populatedMessage.sender);
+                console.log('New message notifications sent successfully');
+            } catch (notificationError) {
+                console.error('Error sending message notification:', notificationError);
+                // Don't fail the message creation if notifications fail
+            }
+
+            // --- EXISTING: Broadcast the message via WebSocket after saving ---
             const conversationMembers = await prisma.conversationMember.findMany({
                 where: { conversationId: parseInt(conversationId) },
                 select: { userId: true },
@@ -306,7 +312,7 @@ const compressVideo = (inputPath, outputPath) => {
                     }
                 }
             }
-            // --- END NEW ---
+            // --- END EXISTING ---
 
             res.status(201).json(populatedMessage);
         } catch (error) {
@@ -375,14 +381,6 @@ const compressVideo = (inputPath, outputPath) => {
                     },
                 });
 
-                // --- NEW: Broadcast the initial message via WebSocket if conversation is created with one ---
-                const conversationMembers = await prisma.conversationMember.findMany({
-                    where: { conversationId: newConversation.id },
-                    select: { userId: true },
-                });
-
-                const memberUserIds = new Set(conversationMembers.map(member => member.userId));
-
                 const populatedInitialMessage = await prisma.message.findUnique({
                     where: { id: message.id },
                     include: {
@@ -394,6 +392,22 @@ const compressVideo = (inputPath, outputPath) => {
                     },
                 });
 
+                // NEW: Send notifications for the initial message
+                try {
+                    console.log('Sending initial message notifications...');
+                    await NotificationService.sendNewMessageNotification(populatedInitialMessage, populatedInitialMessage.sender);
+                    console.log('Initial message notifications sent successfully');
+                } catch (notificationError) {
+                    console.error('Error sending initial message notification:', notificationError);
+                }
+
+                // --- EXISTING: Broadcast the initial message via WebSocket if conversation is created with one ---
+                const conversationMembers = await prisma.conversationMember.findMany({
+                    where: { conversationId: newConversation.id },
+                    select: { userId: true },
+                });
+
+                const memberUserIds = new Set(conversationMembers.map(member => member.userId));
 
                 for (const [clientId, clientWs] of connectedClients) {
                     if (memberUserIds.has(clientId)) {
@@ -402,7 +416,7 @@ const compressVideo = (inputPath, outputPath) => {
                         }
                     }
                 }
-                // --- END NEW ---
+                // --- END EXISTING ---
             }
 
             // Fetch the newly created conversation with its members

@@ -12,17 +12,15 @@ import {
     Platform,
     Image,
     Modal,
-    Pressable,
     ScrollView,
     StatusBar,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import AsyncStorage from '@react-native-async-storage/async-storage'; // Keep for migration
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-
-import * as FileSystem from 'expo-file-system';
 import { Video } from 'expo-av';
+import { useNotifications } from '../hooks/useNotifications';
 
 // SecureStore keys constants
 const SECURE_STORE_KEYS = {
@@ -51,35 +49,23 @@ const getSecureData = async (key) => {
     }
 };
 
-const deleteSecureData = async (key) => {
-    try {
-        await SecureStore.deleteItemAsync(key);
-    } catch (error) {
-        console.error(`Failed to delete ${key} from SecureStore:`, error);
-        throw error;
-    }
-};
-
 // Migration function to move data from AsyncStorage to SecureStore
 const migrateToSecureStore = async () => {
     try {
-        // Check if migration has already been done
         const migrationFlag = await getSecureData(SECURE_STORE_KEYS.MIGRATION_COMPLETED);
         if (migrationFlag === 'true') {
-            return; // Migration already completed
+            return;
         }
 
         console.log('Starting migration from AsyncStorage to SecureStore...');
 
-        // Migrate auth token
         const oldToken = await AsyncStorage.getItem('authToken');
         if (oldToken) {
             await storeSecureData(SECURE_STORE_KEYS.AUTH_TOKEN, oldToken);
-            await AsyncStorage.removeItem('authToken'); // Clean up old storage
+            await AsyncStorage.removeItem('authToken');
             console.log('Auth token migrated successfully');
         }
 
-        // Mark migration as completed
         await storeSecureData(SECURE_STORE_KEYS.MIGRATION_COMPLETED, 'true');
         console.log('Migration to SecureStore completed successfully');
     } catch (error) {
@@ -87,7 +73,7 @@ const migrateToSecureStore = async () => {
     }
 };
 
-// Memoized Message Item Component to prevent unnecessary re-renders
+// Memoized Message Item Component
 const MessageItem = memo(({ item, currentUserId, onImagePress }) => {
     const isCurrentUserSender = item.senderId === currentUserId;
 
@@ -96,7 +82,9 @@ const MessageItem = memo(({ item, currentUserId, onImagePress }) => {
             <Text style={[styles.senderName, isCurrentUserSender ? styles.sentSenderName : styles.receivedSenderName]}>
                 {isCurrentUserSender ? 'You' : item.sender?.firstName}
             </Text>
-            <Text style={[styles.messageText, isCurrentUserSender ? styles.sentMessageText : styles.receivedMessageText]}>{item.content}</Text>
+            <Text style={[styles.messageText, isCurrentUserSender ? styles.sentMessageText : styles.receivedMessageText]}>
+                {item.content}
+            </Text>
             {(item.imageAttachments && item.imageAttachments.length > 0) && (
                 item.imageAttachments.map(attachment => (
                     <TouchableOpacity
@@ -143,6 +131,17 @@ const SeeMessages = () => {
     const [selectedImage, setSelectedImage] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
 
+    // Refs to prevent infinite loops
+    const hasMarkedAsReadOnLoad = useRef(false);
+    const isComponentMounted = useRef(true);
+    const markAsReadTimeoutRef = useRef(null);
+    const lastMarkedTime = useRef(0);
+
+    // Use notification context
+    const { markConversationAsRead } = useNotifications();
+
+    console.log('🎬 SeeMessages component rendered', { conversationId });
+
     const getToken = async () => {
         try {
             const token = await getSecureData(SECURE_STORE_KEYS.AUTH_TOKEN);
@@ -165,6 +164,7 @@ const SeeMessages = () => {
 
                 const payload = JSON.parse(jsonPayload);
                 setCurrentUserId(payload.id);
+                console.log('👤 Current user ID set:', payload.id);
                 return payload.id;
             } catch (e) {
                 console.error("Error decoding token:", e);
@@ -177,7 +177,53 @@ const SeeMessages = () => {
         }
     }, []);
 
+    // DEBUG: Enhanced markAsRead function with extensive logging
+    const markAsRead = useCallback(async () => {
+        console.log('🔥 markAsRead called!', { 
+            conversationId, 
+            isComponentMounted: isComponentMounted.current,
+            hasMarkedAsReadOnLoad: hasMarkedAsReadOnLoad.current,
+            markConversationAsRead: typeof markConversationAsRead
+        });
+        
+        if (!conversationId) {
+            console.log('❌ markAsRead skipped - no conversationId');
+            return;
+        }
+        
+        if (!isComponentMounted.current) {
+            console.log('❌ markAsRead skipped - component not mounted');
+            return;
+        }
+
+        if (typeof markConversationAsRead !== 'function') {
+            console.log('❌ markAsRead skipped - markConversationAsRead is not a function:', typeof markConversationAsRead);
+            return;
+        }
+
+        // Prevent calling too frequently (debounce)
+        const now = Date.now();
+        if (now - lastMarkedTime.current < 2000) {
+            console.log('❌ markAsRead skipped - too soon since last call', { 
+                timeSinceLastCall: now - lastMarkedTime.current 
+            });
+            return;
+        }
+
+        console.log('✅ markAsRead proceeding...');
+
+        try {
+            console.log('🚀 Calling markConversationAsRead directly...', { conversationId });
+            await markConversationAsRead(parseInt(conversationId));
+            lastMarkedTime.current = Date.now();
+            console.log('✅ markConversationAsRead completed successfully');
+        } catch (error) {
+            console.error('❌ Error marking conversation as read:', error);
+        }
+    }, [conversationId, markConversationAsRead]);
+
     const fetchMessages = async () => {
+        console.log('📥 Fetching messages for conversation:', conversationId);
         setLoading(true);
         setError(null);
         try {
@@ -203,6 +249,7 @@ const SeeMessages = () => {
 
             const data = await response.json();
             setMessages(data);
+            console.log('📥 Messages fetched successfully:', data.length);
         } catch (err) {
             console.error("Error fetching messages:", err);
             setError(err.message || "Failed to load messages.");
@@ -212,223 +259,44 @@ const SeeMessages = () => {
         }
     };
 
-   const sendMessage = async () => {
-    if (newMessage.trim()) {
-        console.log("Sending text message:", newMessage.trim());
-        
-        const token = await getToken();
-        if (!token) {
-            Alert.alert("Error", "Authentication token not found.");
-            return;
-        }
-
-        try {
-            const response = await fetch(`https://bh-alumni-social-media-app.onrender.com/api/conversations/${conversationId}/messages`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({ content: newMessage.trim() }),
-            });
-
-            console.log("Text message response:", response.status);
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to send message');
-            }
-
-            const responseData = await response.json();
-            console.log("Text message sent successfully:", responseData);
-
-            // Clear input immediately
-            setNewMessage('');
+    const sendMessage = async () => {
+        if (newMessage.trim()) {
+            console.log("📤 Sending text message:", newMessage.trim());
             
-            // MANUALLY ADD THE MESSAGE TO STATE since WebSocket isn't sending it back
-            setMessages(prevMessages => {
-                // Check if message already exists (in case WebSocket does work sometimes)
-                const messageExists = prevMessages.some(msg => msg.id === responseData.id);
-                
-                if (!messageExists) {
-                    const newMessages = [...prevMessages, responseData];
-                    
-                    // Scroll to end
-                    setTimeout(() => {
-                        flatListRef.current?.scrollToEnd({ animated: true });
-                    }, 100);
-                    
-                    return newMessages;
-                }
-                return prevMessages;
-            });
-            
-        } catch (err) {
-            console.error("Error sending message via HTTP:", err);
-            Alert.alert("Error", err.message || "Could not send message.");
-        }
-    }
-};
-
-    const pickMedia = async () => {
-          if (isUploading) {
-        Alert.alert("Please wait", "Another upload is in progress");
-        return;
-    }
-       
-       
-        let permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-        if (permissionResult.granted === false) {
-            Alert.alert('Permission to access camera roll is required!');
-            return;
-        }
-
-        let pickerResult = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
-        allowsEditing: Platform.OS === 'ios' ? true : false,
-        aspect: [4, 3],
-        quality: 0.7, // Reduce quality to 70%
-        videoMaxDuration: 30, // Limit videos to 30 seconds
-    });
-
-    if (!pickerResult.canceled && pickerResult.assets && pickerResult.assets.length > 0) {
-        const selectedMedia = pickerResult.assets[0];
-        
-        // Check file size before proceeding
-     
-        
-        setIsUploading(true);
-        await handleSendMedia(selectedMedia);
-
-        setTimeout(() => {
-            setIsUploading(false);
-        }, 2000);
-    }
-};
-
-const handleSendMedia = async (media, retryCount = 0) => {
-    const token = await getToken();
-    if (!token) {
-        Alert.alert("Error", "Authentication token not found.");
-        return;
-    }
-
-    try {
-        console.log("Media URI in handleSendMedia:", media.uri);
-        console.log("Media Type:", media.mimeType);
-
-        const formData = new FormData();
-        formData.append('media', {
-            uri: media.uri,
-            name: media.fileName || `media-${Date.now()}.${media.mimeType.split('/')[1]}`,
-            type: media.mimeType,
-        });
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000);
-
-        const response = await fetch(`https://bh-alumni-social-media-app.onrender.com/api/conversations/${conversationId}/messages`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-            },
-            body: formData,
-            signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Failed to send media');
-        }
-
-        const responseData = await response.json();
-        console.log("Media sent successfully:", responseData);
-        
-        // MANUALLY ADD THE MEDIA MESSAGE TO STATE
-        setMessages(prevMessages => {
-            const messageExists = prevMessages.some(msg => msg.id === responseData.id);
-            
-            if (!messageExists) {
-                const newMessages = [...prevMessages, responseData];
-                
-                setTimeout(() => {
-                    flatListRef.current?.scrollToEnd({ animated: true });
-                }, 100);
-                
-                return newMessages;
-            }
-            return prevMessages;
-        });
-
-    } catch (err) {
-        console.error("Error sending media:", err);
-        
-        if (retryCount < 3 && (
-            err.name === 'AbortError' || 
-            err.message.includes('Network request failed') ||
-            err.message.includes('timeout')
-        )) {
-            console.log(`Retrying upload... Attempt ${retryCount + 1}`);
-            setTimeout(() => {
-                handleSendMedia(media, retryCount + 1);
-            }, 3000 * (retryCount + 1));
-            return;
-        }
-        
-        Alert.alert("Error", err.message || "Could not send media.");
-    }
-};
-
-    const handleImagePress = useCallback((imageUrl) => {
-        setSelectedImage(imageUrl);
-        setModalVisible(true);
-    }, []);
-
-    useEffect(() => {
-        let isMounted = true;
-
-        const connectWebSocket = async () => {
             const token = await getToken();
-            const userId = await getUserId();
-            if (token && userId) {
-                try {
-                    // Ensure the WebSocket URL is correct for your backend setup
-                    websocket.current = new WebSocket(`wss://bh-alumni-social-media-app.onrender.com/?token=${token}`);
+            if (!token) {
+                Alert.alert("Error", "Authentication token not found.");
+                return;
+            }
 
-                    websocket.current.onopen = () => {
-                        console.log("WebSocket connected");
-                    };
+            try {
+                const response = await fetch(`https://bh-alumni-social-media-app.onrender.com/api/conversations/${conversationId}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ content: newMessage.trim() }),
+                });
 
-               websocket.current.onmessage = (event) => {
-    try {
-        const parsedMessage = JSON.parse(event.data);
-        console.log("WebSocket received:", parsedMessage);
-        
-        if (parsedMessage.type === 'newMessage' && 
-            parsedMessage.message.conversationId === parseInt(conversationId)) {
-            
-            if (isMounted) {
-                console.log("Adding message to state:", parsedMessage.message);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Failed to send message');
+                }
+
+                const responseData = await response.json();
+                console.log("📤 Text message sent successfully:", responseData.id);
+
+                // Clear input immediately
+                setNewMessage('');
                 
+                // Add message to state
                 setMessages(prevMessages => {
-                    // More robust duplicate check
-                    const messageExists = prevMessages.some(msg => 
-                        msg.id === parsedMessage.message.id || 
-                        (msg.content === parsedMessage.message.content && 
-                         msg.senderId === parsedMessage.message.senderId &&
-                         Math.abs(new Date(msg.createdAt) - new Date(parsedMessage.message.createdAt)) < 1000)
-                    );
+                    const messageExists = prevMessages.some(msg => msg.id === responseData.id);
                     
                     if (!messageExists) {
-                        const newMessages = [...prevMessages, parsedMessage.message];
+                        const newMessages = [...prevMessages, responseData];
                         
-                        // Sort messages by createdAt to ensure proper order
-                        newMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-                        
-                        // Scroll to end after state update
                         setTimeout(() => {
                             flatListRef.current?.scrollToEnd({ animated: true });
                         }, 100);
@@ -437,22 +305,227 @@ const handleSendMedia = async (media, retryCount = 0) => {
                     }
                     return prevMessages;
                 });
+
+                // DEBUG: Mark as read after sending message
+                if (isComponentMounted.current) {
+                    console.log('⏰ Setting timeout to mark as read after sending message...');
+                    setTimeout(() => {
+                        console.log('⏰ Send message timeout fired, calling markAsRead...');
+                        markAsRead();
+                    }, 500);
+                }
+                
+            } catch (err) {
+                console.error("Error sending message via HTTP:", err);
+                Alert.alert("Error", err.message || "Could not send message.");
             }
         }
-    } catch (e) {
-        console.error("Error parsing WebSocket message:", e);
-    }
-};
+    };
+
+    const pickMedia = async () => {
+        if (isUploading) {
+            Alert.alert("Please wait", "Another upload is in progress");
+            return;
+        }
+        
+        let permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+        if (permissionResult.granted === false) {
+            Alert.alert('Permission to access camera roll is required!');
+            return;
+        }
+
+        let pickerResult = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.All,
+            allowsEditing: Platform.OS === 'ios' ? true : false,
+            aspect: [4, 3],
+            quality: 0.7,
+            videoMaxDuration: 30,
+        });
+
+        if (!pickerResult.canceled && pickerResult.assets && pickerResult.assets.length > 0) {
+            const selectedMedia = pickerResult.assets[0];
+            
+            setIsUploading(true);
+            await handleSendMedia(selectedMedia);
+
+            setTimeout(() => {
+                setIsUploading(false);
+            }, 500);
+        }
+    };
+
+    const handleSendMedia = async (media, retryCount = 0) => {
+        const token = await getToken();
+        if (!token) {
+            Alert.alert("Error", "Authentication token not found.");
+            return;
+        }
+
+        try {
+            console.log("📤 Sending media:", media.mimeType);
+
+            const formData = new FormData();
+            formData.append('media', {
+                uri: media.uri,
+                name: media.fileName || `media-${Date.now()}.${media.mimeType.split('/')[1]}`,
+                type: media.mimeType,
+            });
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+            const response = await fetch(`https://bh-alumni-social-media-app.onrender.com/api/conversations/${conversationId}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: formData,
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to send media');
+            }
+
+            const responseData = await response.json();
+            console.log("📤 Media sent successfully:", responseData.id);
+            
+            // Add media message to state
+            setMessages(prevMessages => {
+                const messageExists = prevMessages.some(msg => msg.id === responseData.id);
+                
+                if (!messageExists) {
+                    const newMessages = [...prevMessages, responseData];
+                    
+                    setTimeout(() => {
+                        flatListRef.current?.scrollToEnd({ animated: true });
+                    }, 100);
+                    
+                    return newMessages;
+                }
+                return prevMessages;
+            });
+
+            // DEBUG: Mark as read after sending media
+            if (isComponentMounted.current) {
+                console.log('⏰ Setting timeout to mark as read after sending media...');
+                setTimeout(() => {
+                    console.log('⏰ Send media timeout fired, calling markAsRead...');
+                    markAsRead();
+                }, 1500);
+            }
+
+        } catch (err) {
+            console.error("Error sending media:", err);
+            
+            if (retryCount < 3 && (
+                err.name === 'AbortError' || 
+                err.message.includes('Network request failed') ||
+                err.message.includes('timeout')
+            )) {
+                console.log(`Retrying upload... Attempt ${retryCount + 1}`);
+                setTimeout(() => {
+                    handleSendMedia(media, retryCount + 1);
+                }, 3000 * (retryCount + 1));
+                return;
+            }
+            
+            Alert.alert("Error", err.message || "Could not send media.");
+        }
+    };
+
+    const handleImagePress = useCallback((imageUrl) => {
+        setSelectedImage(imageUrl);
+        setModalVisible(true);
+    }, []);
+
+    // Clean up timeout on unmount
+    useEffect(() => {
+        console.log('🎬 SeeMessages useEffect cleanup setup');
+        return () => {
+            console.log('🧹 SeeMessages cleanup - clearing timeout');
+            if (markAsReadTimeoutRef.current) {
+                clearTimeout(markAsReadTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        console.log('🎬 SeeMessages main useEffect starting', { conversationId });
+        isComponentMounted.current = true;
+        let isMounted = true;
+
+        const connectWebSocket = async () => {
+            const token = await getToken();
+            const userId = await getUserId();
+            console.log('🔌 Attempting WebSocket connection', { hasToken: !!token, userId });
+            
+            if (token && userId) {
+                try {
+                    websocket.current = new WebSocket(`wss://bh-alumni-social-media-app.onrender.com/?token=${token}`);
+
+                    websocket.current.onopen = () => {
+                        console.log("🔌 WebSocket connected");
+                    };
+
+                    websocket.current.onmessage = (event) => {
+                        try {
+                            const parsedMessage = JSON.parse(event.data);
+                            console.log("📨 WebSocket received:", parsedMessage.type);
+                            
+                            if (parsedMessage.type === 'newMessage' && 
+                                parsedMessage.message.conversationId === parseInt(conversationId)) {
+                                
+                                console.log('📨 New message for this conversation:', parsedMessage.message.id);
+                                
+                                if (isMounted) {
+                                    setMessages(prevMessages => {
+                                        const messageExists = prevMessages.some(msg => 
+                                            msg.id === parsedMessage.message.id || 
+                                            (msg.content === parsedMessage.message.content && 
+                                             msg.senderId === parsedMessage.message.senderId &&
+                                             Math.abs(new Date(msg.createdAt) - new Date(parsedMessage.message.createdAt)) < 1000)
+                                        );
+                                        
+                                        if (!messageExists) {
+                                            const newMessages = [...prevMessages, parsedMessage.message];
+                                            newMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                                            
+                                            setTimeout(() => {
+                                                flatListRef.current?.scrollToEnd({ animated: true });
+                                            }, 100);
+                                            
+                                            // DEBUG: Mark as read when receiving message from others
+                                            if (parsedMessage.message.senderId !== currentUserId && isComponentMounted.current) {
+                                                console.log('⏰ Setting timeout to mark as read after receiving message from user:', parsedMessage.message.senderId);
+                                                setTimeout(() => {
+                                                    console.log('⏰ Receive message timeout fired, calling markAsRead...');
+                                                    markAsRead();
+                                                }, 2000);
+                                            }
+                                            
+                                            return newMessages;
+                                        }
+                                        return prevMessages;
+                                    });
+                                }
+                            }
+                        } catch (e) {
+                            console.error("Error parsing WebSocket message:", e);
+                        }
+                    };
 
                     websocket.current.onclose = () => {
-                        console.log("WebSocket disconnected. Attempting to reconnect...");
-                        // Implement a backoff strategy for reconnection attempts if needed
+                        console.log("🔌 WebSocket disconnected. Attempting to reconnect...");
                         setTimeout(connectWebSocket, 3000);
                     };
 
                     websocket.current.onerror = (error) => {
-                        console.error("WebSocket error:", error);
-                        // Consider closing and attempting to reconnect on error
+                        console.error("🔌 WebSocket error:", error);
                         websocket.current.close();
                     };
                 } catch (error) {
@@ -462,45 +535,57 @@ const handleSendMedia = async (media, retryCount = 0) => {
         };
 
         const initializeComponent = async () => {
-            // Run migration first
+            console.log('🎬 Initializing SeeMessages component...');
             await migrateToSecureStore();
-            
-            // Then proceed with normal initialization
             await getUserId();
+            
             if (conversationId) {
                 fetchMessages();
                 connectWebSocket();
+                
+                // DEBUG: Mark as read when component loads (only once)
+                if (!hasMarkedAsReadOnLoad.current && isComponentMounted.current) {
+                    hasMarkedAsReadOnLoad.current = true;
+                    console.log('⏰ Setting timeout to mark as read on component load...');
+                    setTimeout(() => {
+                        console.log('⏰ Component load timeout fired, calling markAsRead...');
+                        if (isComponentMounted.current) {
+                            markAsRead();
+                        } else {
+                            console.log('❌ Component unmounted before timeout fired');
+                        }
+                    }, 1000);
+                }
             }
         };
 
         initializeComponent();
 
         return () => {
+            console.log('🧹 SeeMessages main useEffect cleanup');
             isMounted = false;
+            isComponentMounted.current = false;
             if (websocket.current && websocket.current.readyState === WebSocket.OPEN) {
                 websocket.current.close();
             }
         };
-    }, [getUserId, conversationId]); // Dependencies for useEffect
+    }, [conversationId, getUserId]); // Removed markAsRead from dependencies
 
     useEffect(() => {
-        // Scroll to end when messages load or new messages arrive
         if (messages.length > 0 && !loading) {
-            // Use a small timeout to ensure FlatList has rendered new items
             setTimeout(() => {
-                flatListRef.current?.scrollToEnd({ animated: true }); // Changed to animated: true for smoother scroll
+                flatListRef.current?.scrollToEnd({ animated: true });
             }, 100);
         }
     }, [messages, loading]);
 
-    // Pass necessary props to the memoized MessageItem
     const renderMessageItem = useCallback(({ item }) => (
         <MessageItem
             item={item}
             currentUserId={currentUserId}
             onImagePress={handleImagePress}
         />
-    ), [currentUserId, handleImagePress]); // Dependencies for useCallback
+    ), [currentUserId, handleImagePress]);
 
     if (loading && messages.length === 0) {
         return (
@@ -525,122 +610,122 @@ const handleSendMedia = async (media, retryCount = 0) => {
     }
 
     return (
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-    >
-        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-        
-        {/* Header */}
-        <View style={styles.header}>
-            <View style={styles.leftButtonContainer}>
-                <TouchableOpacity style={styles.backButton} onPress={() => router.push('/messaging')}>
-                    <Text style={styles.headerButtonText}>← Messages</Text>
-                </TouchableOpacity>
-            </View>
-            <View style={styles.spacer} />
-            <View style={styles.rightTitleContainer}>
-                <Text style={styles.headerTitle}>Conversation</Text>
-            </View>
-        </View>
-
-        {/* Messages List */}
-        <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={renderMessageItem}
-            contentContainerStyle={styles.messagesContainer}
-            style={styles.messagesList}
-            initialNumToRender={10}
-            maxToRenderPerBatch={5}
-            windowSize={21}
-            removeClippedSubviews={true}
-            showsVerticalScrollIndicator={false}
-        />
-
-        {/* Input Container */}
-        <View style={styles.inputContainer}>
-            <TouchableOpacity 
-                onPress={pickMedia} 
-                style={[styles.mediaButton, isUploading && styles.mediaButtonDisabled]}
-                disabled={isUploading}
-            >
-                <Text style={[styles.mediaButtonText, isUploading && styles.mediaButtonTextDisabled]}>
-                    {isUploading ? '...' : '+'}
-                </Text>
-            </TouchableOpacity>
-            <TextInput
-                style={styles.input}
-                placeholder="Type a message..."
-                placeholderTextColor="#bdc3c7"
-                value={newMessage}
-                onChangeText={setNewMessage}
-                onSubmitEditing={sendMessage}
-                multiline
-            />
-            <TouchableOpacity 
-                style={[styles.sendButton, !newMessage.trim() && styles.sendButtonDisabled]} 
-                onPress={sendMessage}
-                disabled={!newMessage.trim()}
-            >
-                <Text style={[styles.sendButtonText, !newMessage.trim() && styles.sendButtonTextDisabled]}>
-                    Send
-                </Text>
-            </TouchableOpacity>
-        </View>
-
-        {/* Image Modal */}
-        <Modal
-            animationType="fade"
-            transparent={true}
-            visible={modalVisible}
-            onRequestClose={() => {
-                setModalVisible(false);
-                setSelectedImage(null);
-            }}
+        <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-            <View style={styles.modalContainer}>
+            <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+            
+            {/* Header */}
+            <View style={styles.header}>
+                <View style={styles.leftButtonContainer}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => router.push('/messaging')}>
+                        <Text style={styles.headerButtonText}>← Messages</Text>
+                    </TouchableOpacity>
+                </View>
+                <View style={styles.spacer} />
+                <View style={styles.rightTitleContainer}>
+                    <Text style={styles.headerTitle}>Conversation</Text>
+                </View>
+            </View>
+
+            {/* Messages List */}
+            <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={renderMessageItem}
+                contentContainerStyle={styles.messagesContainer}
+                style={styles.messagesList}
+                initialNumToRender={10}
+                maxToRenderPerBatch={5}
+                windowSize={21}
+                removeClippedSubviews={true}
+                showsVerticalScrollIndicator={false}
+            />
+
+            {/* Input Container */}
+            <View style={styles.inputContainer}>
                 <TouchableOpacity 
-                    style={styles.modalBackdrop}
-                    onPress={() => {
-                        setModalVisible(false);
-                        setSelectedImage(null);
-                    }}
+                    onPress={pickMedia} 
+                    style={[styles.mediaButton, isUploading && styles.mediaButtonDisabled]}
+                    disabled={isUploading}
                 >
-                    <ScrollView
-                        style={styles.modalScrollView}
-                        maximumZoomScale={3}
-                        minimumZoomScale={1}
-                        centerContent={true}
-                        contentContainerStyle={styles.modalScrollContent}
-                    >
-                        {selectedImage && (
-                            <Image
-                                source={{ uri: selectedImage }}
-                                style={styles.modalImage}
-                                resizeMode="contain"
-                            />
-                        )}
-                    </ScrollView>
+                    <Text style={[styles.mediaButtonText, isUploading && styles.mediaButtonTextDisabled]}>
+                        {isUploading ? '...' : '+'}
+                    </Text>
                 </TouchableOpacity>
+                <TextInput
+                    style={styles.input}
+                    placeholder="Type a message..."
+                    placeholderTextColor="#bdc3c7"
+                    value={newMessage}
+                    onChangeText={setNewMessage}
+                    onSubmitEditing={sendMessage}
+                    multiline
+                />
                 <TouchableOpacity 
-                    style={styles.closeButton} 
-                    onPress={() => {
-                        setModalVisible(false);
-                        setSelectedImage(null);
-                    }}
+                    style={[styles.sendButton, !newMessage.trim() && styles.sendButtonDisabled]} 
+                    onPress={sendMessage}
+                    disabled={!newMessage.trim()}
                 >
-                    <Text style={styles.closeButtonText}>✕</Text>
+                    <Text style={[styles.sendButtonText, !newMessage.trim() && styles.sendButtonTextDisabled]}>
+                        Send
+                    </Text>
                 </TouchableOpacity>
             </View>
-        </Modal>
-    </KeyboardAvoidingView>
+
+            {/* Image Modal */}
+            <Modal
+                animationType="fade"
+                transparent={true}
+                visible={modalVisible}
+                onRequestClose={() => {
+                    setModalVisible(false);
+                    setSelectedImage(null);
+                }}
+            >
+                <View style={styles.modalContainer}>
+                    <TouchableOpacity 
+                        style={styles.modalBackdrop}
+                        onPress={() => {
+                            setModalVisible(false);
+                            setSelectedImage(null);
+                        }}
+                    >
+                        <ScrollView
+                            style={styles.modalScrollView}
+                            maximumZoomScale={3}
+                            minimumZoomScale={1}
+                            centerContent={true}
+                            contentContainerStyle={styles.modalScrollContent}
+                        >
+                            {selectedImage && (
+                                <Image
+                                    source={{ uri: selectedImage }}
+                                    style={styles.modalImage}
+                                    resizeMode="contain"
+                                />
+                            )}
+                        </ScrollView>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                        style={styles.closeButton} 
+                        onPress={() => {
+                            setModalVisible(false);
+                            setSelectedImage(null);
+                        }}
+                    >
+                        <Text style={styles.closeButtonText}>✕</Text>
+                    </TouchableOpacity>
+                </View>
+            </Modal>
+        </KeyboardAvoidingView>
     );
 };
 
-export default SeeMessages
+export default SeeMessages;
 
 const styles = StyleSheet.create({
     container: {
@@ -670,11 +755,6 @@ const styles = StyleSheet.create({
     rightTitleContainer: {
         alignItems: 'flex-end',
         paddingRight: Platform.OS === 'ios' ? 0 : 10,
-    },
-    headerButton: {
-        minWidth: Platform.OS === 'ios' ? 60 : 50,
-        maxWidth: Platform.OS === 'ios' ? 80 : 60,
-        alignItems: Platform.OS === 'ios' ? 'flex-start' : 'center',
     },
     headerButtonText: {
         color: '#7f8c8d',
@@ -777,7 +857,6 @@ const styles = StyleSheet.create({
         fontWeight: '300',
         letterSpacing: 0.3,
         lineHeight: 22,
-        color: '#ffffff',
     },
     attachmentContainer: {
         marginTop: 8,

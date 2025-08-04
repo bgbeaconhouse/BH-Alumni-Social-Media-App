@@ -1,13 +1,18 @@
+
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert, Platform, StatusBar } from 'react-native';
 import React, { useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { Link, useRouter } from 'expo-router';
+import { useNotifications } from '../hooks/useNotifications';
 
 const Messaging = () => {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const router = useRouter();
+
+  // NEW: Use notification context
+  const { unreadCounts, refreshUnreadCounts } = useNotifications();
 
   // Function to retrieve the JWT token from SecureStore
   const getToken = async () => {
@@ -58,9 +63,44 @@ const Messaging = () => {
     }
   };
 
+  // DEBUG: Reset unread counts function
+  const resetUnreadCounts = async () => {
+    try {
+      const token = await getToken();
+      console.log('🔄 Resetting unread counts...');
+      
+      const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/notifications/reset-unread-counts', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      const result = await response.json();
+      console.log('✅ Reset response:', result);
+      
+      // Refresh the page data
+      fetchConversations();
+      refreshUnreadCounts();
+      
+      Alert.alert('Debug', 'Unread counts reset successfully!');
+    } catch (error) {
+      console.error('❌ Error resetting unread counts:', error);
+      Alert.alert('Error', 'Failed to reset unread counts');
+    }
+  };
+
   useEffect(() => {
     fetchConversations();
-  }, []);
+    // Refresh unread counts when messaging screen loads
+    refreshUnreadCounts();
+  }, [refreshUnreadCounts]);
+
+  // NEW: Handle conversation navigation with read marking
+  const handleConversationPress = (conversationId) => {
+    router.push({
+      pathname: '/seeMessages',
+      params: { conversationId: conversationId },
+    });
+  };
 
   const handleNewMessagePress = () => {
     router.push('/newMessage');
@@ -99,13 +139,33 @@ const Messaging = () => {
             <Text style={styles.headerButtonText}>← Home</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.headerTitle}>Messages</Text>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>Messages</Text>
+          {/* NEW: Show unread count badge */}
+          {unreadCounts.unreadMessagesCount > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>
+                {unreadCounts.unreadMessagesCount > 99 ? '99+' : unreadCounts.unreadMessagesCount}
+              </Text>
+            </View>
+          )}
+        </View>
         <View style={styles.headerButton}>
           <TouchableOpacity style={styles.newButton} onPress={handleNewMessagePress}>
             <Text style={styles.headerButtonText}>New</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* DEBUG BUTTON */}
+      <TouchableOpacity 
+        style={styles.debugButton} 
+        onPress={resetUnreadCounts}
+      >
+        <Text style={styles.debugButtonText}>
+          🔄 Reset Unread Counts (DEBUG)
+        </Text>
+      </TouchableOpacity>
 
       {conversations.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -126,31 +186,35 @@ const Messaging = () => {
           data={conversations}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.conversationItem}>
-              <Link
-                href={{
-                  pathname: '/seeMessages',
-                  params: { conversationId: item.id },
-                }}
-                style={styles.conversationLink}
-              >
-                <View style={styles.conversationContent}>
+            <TouchableOpacity 
+              style={styles.conversationItem}
+              onPress={() => handleConversationPress(item.id)}
+            >
+              <View style={styles.conversationContent}>
+                <View style={styles.conversationHeader}>
                   <Text style={styles.conversationName}>
                     {item.name ? item.name : item.participants.map(p => p.firstName).join(', ')}
                   </Text>
-                  {item.lastMessage ? (
-                    <Text style={styles.lastMessage}>
-                      {item.lastMessage.sender.firstName}: {item.lastMessage.content ? item.lastMessage.content : 'Attachment'}
-                    </Text>
-                  ) : (
-                    <Text style={styles.noMessage}>No messages yet</Text>
-                  )}
+                  {/* NEW: Show unread indicator for individual conversations if needed */}
+                  {/* You could add individual conversation unread counts here if you enhance the backend */}
                 </View>
-              </Link>
+                {item.lastMessage ? (
+                  <Text style={styles.lastMessage}>
+                    {item.lastMessage.sender.firstName}: {item.lastMessage.content ? item.lastMessage.content : 'Attachment'}
+                  </Text>
+                ) : (
+                  <Text style={styles.noMessage}>No messages yet</Text>
+                )}
+              </View>
             </TouchableOpacity>
           )}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          refreshing={loading}
+          onRefresh={() => {
+            fetchConversations();
+            refreshUnreadCounts();
+          }}
         />
       )}
     </View>
@@ -190,13 +254,46 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     letterSpacing: 0.5,
   },
+  headerTitleContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: '100',
     color: '#2c3e50',
     letterSpacing: 2,
-    flex: 1,
+  },
+  // NEW: Unread badge styles
+  unreadBadge: {
+    backgroundColor: '#e74c3c',
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  unreadBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
     textAlign: 'center',
+  },
+  // DEBUG BUTTON STYLES
+  debugButton: {
+    backgroundColor: '#e74c3c',
+    padding: 15,
+    margin: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  debugButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,
@@ -290,19 +387,21 @@ const styles = StyleSheet.create({
   conversationItem: {
     marginBottom: 1,
   },
-  conversationLink: {
+  conversationContent: {
     paddingVertical: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#ecf0f1',
   },
-  conversationContent: {
-    flex: 1,
+  conversationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
   },
   conversationName: {
     fontSize: 16,
     fontWeight: '300',
     color: '#2c3e50',
-    marginBottom: 6,
     letterSpacing: 0.5,
   },
   lastMessage: {
