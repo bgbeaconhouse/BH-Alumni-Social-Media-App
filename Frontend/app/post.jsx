@@ -6,8 +6,7 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNotifications } from '../hooks/useNotifications';
 
-// REMOVED: const NotificationService = require("../services/notificationService");
-// This was causing the issue! You can't use require() in React Native frontend
+
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 

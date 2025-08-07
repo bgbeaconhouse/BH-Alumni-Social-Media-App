@@ -1,12 +1,15 @@
+// frontend/app/home.jsx
 import { StyleSheet, Text, View, TouchableOpacity, Alert, StatusBar, Platform } from 'react-native';
 import React, { useEffect } from 'react';
 import { Link, useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNotifications } from '../hooks/useNotifications';
+import { useAuth } from '../hooks/useAuth';
 
 const Home = () => {
   const router = useRouter();
+  
+  // Auth functionality
+  const { user, logout } = useAuth();
   
   // Notification functionality
   const { 
@@ -24,33 +27,42 @@ const Home = () => {
     }
   }, [isInitialized, initializeNotifications]);
 
-  const logout = async () => {
+  const handleLogout = () => {
     Alert.alert(
       "Logout",
-      "Are you sure you want to logout?",
+      "How would you like to sign out?",
       [
         {
           text: "Cancel",
           style: "cancel"
         },
         {
-          text: "Logout",
+          text: "Keep Login Info",
+          onPress: async () => {
+            try {
+              // Clean up notifications first
+              await cleanupNotifications();
+              
+              // Logout but keep saved credentials
+              await logout(false);
+              
+            } catch (error) {
+              console.error('Error during logout:', error);
+              // Even if there's an error, still navigate away for security
+              router.replace('/');
+            }
+          }
+        },
+        {
+          text: "Forget Login Info",
           style: "destructive",
           onPress: async () => {
             try {
               // Clean up notifications first
               await cleanupNotifications();
               
-              // Remove token from SecureStore
-              await SecureStore.deleteItemAsync('authToken');
-              
-              // Clear any AsyncStorage remnants
-              await AsyncStorage.removeItem('authToken');
-              await AsyncStorage.removeItem('userId');
-              await AsyncStorage.removeItem('token');
-              
-              // Navigate to login page and prevent going back
-              router.replace('/');
+              // Logout and clear saved credentials
+              await logout(true);
               
             } catch (error) {
               console.error('Error during logout:', error);
@@ -69,7 +81,12 @@ const Home = () => {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout}>
+        <View style={styles.userInfo}>
+          <Text style={styles.welcomeUser}>
+            Welcome, {user?.firstName || user?.username || 'User'}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
@@ -124,6 +141,16 @@ const Home = () => {
             </Link>
           </TouchableOpacity>
         </View>
+
+        {/* Auto-Login Status Indicator */}
+        <View style={styles.statusContainer}>
+          <Text style={styles.statusText}>
+            🔒 Auto-login enabled
+          </Text>
+          <Text style={styles.statusSubtext}>
+            You'll stay signed in on this device
+          </Text>
+        </View>
       </View>
 
       {/* Footer */}
@@ -142,10 +169,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingTop: Platform.OS === 'ios' ? 50 : 30,
     paddingHorizontal: 30,
     paddingBottom: 20,
-    alignItems: 'flex-end',
+  },
+  userInfo: {
+    flex: 1,
+  },
+  welcomeUser: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    fontWeight: '300',
+    letterSpacing: 0.5,
   },
   logoutButton: {
     paddingVertical: 8,
@@ -267,6 +305,30 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 10,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  statusContainer: {
+    marginTop: 40,
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ecf0f1',
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#27ae60',
+    fontWeight: '300',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  statusSubtext: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    fontWeight: '300',
+    letterSpacing: 0.5,
     textAlign: 'center',
   },
   footer: {

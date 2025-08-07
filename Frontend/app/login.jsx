@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View, TouchableOpacity, TextInput, Alert, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Keyboard } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-import React, { useState, useRef } from 'react';
-import * as SecureStore from 'expo-secure-store';
+import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../hooks/useAuth';
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -10,8 +10,38 @@ const Login = () => {
   });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [autoFillLoaded, setAutoFillLoaded] = useState(false);
+  
   const router = useRouter();
   const passwordInputRef = useRef(null);
+  
+  const { login, getSavedCredentials } = useAuth();
+
+  // Load saved credentials on component mount
+  useEffect(() => {
+    const loadSavedCredentials = async () => {
+      try {
+        const savedCreds = await getSavedCredentials();
+        
+        if (savedCreds.username || savedCreds.password) {
+          setFormData({
+            username: savedCreds.username,
+            password: savedCreds.password,
+          });
+          setRememberMe(savedCreds.rememberMe);
+          console.log('💾 Loaded saved credentials');
+        }
+        
+        setAutoFillLoaded(true);
+      } catch (error) {
+        console.error('Error loading saved credentials:', error);
+        setAutoFillLoaded(true);
+      }
+    };
+
+    loadSavedCredentials();
+  }, [getSavedCredentials]);
 
   const handleChange = (field, value) => {
     setFormData({ ...formData, [field]: value });
@@ -30,99 +60,44 @@ const Login = () => {
       }
 
       setLoading(true);
+      
       try {
-        const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formData),
-        });
-
-        if (!response.ok) {
-          let errorMessage = "Login Failed";
-          if (response.headers.get('content-type')?.includes('application/json')) {
-            try {
-              const errorData = await response.json();
-              errorMessage = errorData.message || errorMessage;
-            } catch (jsonError) {
-              const text = await response.text();
-              errorMessage = text || errorMessage;
-            }
-          } else {
-            const text = await response.text();
-            errorMessage = text || errorMessage;
-          }
-          throw new Error(errorMessage);
-        }
-
-        let result;
-        try {
-          result = await response.json();
-        } catch (error) {
-          console.error("Error parsing JSON:", error);
-          const text = await response.text();
-          console.error("Raw response text:", text);
-          Alert.alert(
-            "Login Error",
-            "Error parsing server response. Please check the server logs."
-          );
-          setLoading(false);
-          return;
-        }
-
-        console.log("Full server response:", result);
-        const tokenToStore = result.token;
-
-        if (tokenToStore) {
-          try {
-            await SecureStore.setItemAsync('authToken', tokenToStore);
-            console.log('Token stored securely:', tokenToStore);
-          } catch (secureStoreError) {
-            console.error('Error storing token in SecureStore:', secureStoreError);
-            Alert.alert(
-              'Storage Error',
-              'Failed to securely store authentication token. Please try again.'
-            );
-            setLoading(false);
-            return;
-          }
-        } else {
-          console.warn('Received undefined token from server:', result);
-          Alert.alert(
-            'Login Warning',
-            'Login was successful, but no token was received. Please check your backend API.',
-            [
-              {
-                text: 'OK',
-                onPress: () => {
-                  //  router.push('/home');
-                },
+        const result = await login(formData.username, formData.password, rememberMe);
+        
+        if (result.success) {
+          Alert.alert('Login Successful', result.message || 'Welcome back!', [
+            {
+              text: 'OK',
+              onPress: () => {
+                router.replace('/home');
               },
-            ]
-          );
-          setLoading(false);
-          return;
-        }
-
-        Alert.alert('Login Successful', result.message || 'Welcome back!', [
-          {
-            text: 'OK',
-            onPress: () => {
-              router.push('/home');
             },
-          },
-        ]);
-
-        setFormData({ username: '', password: '' });
-
+          ]);
+          
+          // Clear form
+          setFormData({ username: '', password: '' });
+        } else {
+          Alert.alert('Login Failed', result.message);
+        }
+        
       } catch (error) {
-        Alert.alert('Login Failed', error.message);
+        Alert.alert('Login Failed', 'An unexpected error occurred. Please try again.');
+        console.error('Login error:', error);
       } finally {
         setLoading(false);
       }
     }, 100); // Small delay to ensure keyboard dismissal
   };
+
+  // Show loading state while auto-fill is being loaded
+  if (!autoFillLoaded) {
+    return (
+      <View style={styles.loadingContainer}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -166,7 +141,6 @@ const Login = () => {
                 autoCorrect={false}
                 returnKeyType="next"
                 onSubmitEditing={() => {
-                  // Focus password field when "next" is pressed
                   passwordInputRef.current?.focus();
                 }}
                 blurOnSubmit={false}
@@ -196,6 +170,20 @@ const Login = () => {
                   <Text style={styles.eyeText}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+
+            {/* Remember Me Checkbox */}
+            <View style={styles.rememberMeContainer}>
+              <TouchableOpacity 
+                style={styles.checkboxContainer}
+                onPress={() => setRememberMe(!rememberMe)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+                  {rememberMe && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+                <Text style={styles.checkboxLabel}>Remember me</Text>
+              </TouchableOpacity>
             </View>
 
             <TouchableOpacity 
@@ -242,6 +230,18 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     backgroundColor: '#ffffff',
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#7f8c8d',
+    fontWeight: '300',
+    letterSpacing: 0.5,
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 50 : 30,
@@ -317,6 +317,38 @@ const styles = StyleSheet.create({
   eyeText: {
     fontSize: 16,
     color: '#bdc3c7',
+  },
+  rememberMeContainer: {
+    marginBottom: 30,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 1,
+    borderColor: '#bdc3c7',
+    borderRadius: 4,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#2c3e50',
+    borderColor: '#2c3e50',
+  },
+  checkmark: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    fontWeight: '300',
+    letterSpacing: 0.5,
   },
   loginButton: {
     backgroundColor: '#2c3e50',

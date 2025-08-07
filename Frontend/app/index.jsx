@@ -1,8 +1,54 @@
-import { StyleSheet, Text, TouchableOpacity, View, StatusBar } from 'react-native';
-import React from 'react';
-import { Link } from 'expo-router';
+// frontend/app/index.js
+import { StyleSheet, Text, TouchableOpacity, View, StatusBar, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Link, useRouter } from 'expo-router';
+import { useAuth } from '../hooks/useAuth';
 
 const Home = () => {
+  const { isAuthenticated, isLoading, checkAuthStatus } = useAuth();
+  const router = useRouter();
+  const [initialCheckComplete, setInitialCheckComplete] = useState(false);
+
+  useEffect(() => {
+    const performInitialCheck = async () => {
+      console.log('🚀 App starting - checking auth status...');
+      
+      // Wait for auth check to complete
+      await checkAuthStatus();
+      setInitialCheckComplete(true);
+    };
+
+    performInitialCheck();
+  }, [checkAuthStatus]);
+
+  // Redirect to home if authenticated
+  useEffect(() => {
+    if (initialCheckComplete && isAuthenticated) {
+      console.log('✅ User authenticated, redirecting to home...');
+      router.replace('/home');
+    }
+  }, [isAuthenticated, initialCheckComplete, router]);
+
+  // Show loading screen while checking authentication
+  if (isLoading || !initialCheckComplete) {
+    return (
+      <View style={styles.loadingContainer}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        
+        <View style={styles.loadingContent}>
+          <Text style={styles.logo}>BH</Text>
+          <ActivityIndicator size="large" color="#2c3e50" style={styles.spinner} />
+          <Text style={styles.loadingText}>Checking authentication...</Text>
+        </View>
+        
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Beacon House • Est. 1974</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Show welcome screen if not authenticated
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
@@ -45,6 +91,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    justifyContent: 'space-between',
+  },
+  loadingContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
   content: {
     flex: 1,
     justifyContent: 'center',
@@ -74,6 +131,16 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     fontWeight: '300',
     letterSpacing: 0.5,
+  },
+  spinner: {
+    marginVertical: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#7f8c8d',
+    fontWeight: '300',
+    letterSpacing: 0.5,
+    textAlign: 'center',
   },
   actionButtons: {
     width: '100%',

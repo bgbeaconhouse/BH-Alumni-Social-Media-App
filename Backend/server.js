@@ -300,6 +300,57 @@ app.post("/api/admin/approve/:userId", verifyToken, async (req, res, next) => {
     }
 });
 
+// Token validation endpoint
+app.get("/api/auth/validate", verifyToken, async (req, res, next) => {
+    try {
+        // If we reach here, the token is valid (verified by middleware)
+        const user = await prisma.user.findUnique({
+            where: { id: req.userId },
+            select: {
+                id: true,
+                username: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                approved: true,
+                isAdmin: true,
+                unreadPostsCount: true,
+                unreadMessagesCount: true,
+                lastPostViewedAt: true
+            }
+        });
+
+        if (!user) {
+            return res.status(404).json({ 
+                message: "User not found" 
+            });
+        }
+
+        if (!user.approved) {
+            return res.status(403).json({ 
+                message: "Account not approved yet" 
+            });
+        }
+
+        // Return user data (excluding sensitive information)
+        res.status(200).json({
+            id: user.id,
+            username: user.username,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            isAdmin: user.isAdmin,
+            unreadPostsCount: user.unreadPostsCount,
+            unreadMessagesCount: user.unreadMessagesCount,
+            lastPostViewedAt: user.lastPostViewedAt,
+            tokenValid: true
+        });
+
+    } catch (error) {
+        console.error("Error validating token:", error);
+        next(error);
+    }
+});
 
 
 // Pass wss, connectedClients, AND the 'app' instance to the conversations router
