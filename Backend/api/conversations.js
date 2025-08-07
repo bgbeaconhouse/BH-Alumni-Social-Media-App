@@ -77,9 +77,6 @@ const compressVideo = (inputPath, outputPath) => {
 };
 
     // Serve static files from the uploads directory with caching headers
-    // This should ideally be done in your main app.js or server.js file once for all static assets.
-    // However, for demonstration, we'll add it here.
-    // Make sure 'app' (the express app instance) is passed to this module.
     if (app) {
         app.use('/uploads', express.static('/mnt/disks/uploads', {
             maxAge: '1h', // Cache static files for 1 hour
@@ -93,76 +90,112 @@ const compressVideo = (inputPath, outputPath) => {
         console.warn("Express app instance not provided. Static file serving and caching headers might not be configured correctly.");
     }
 
-    // Get all conversations of user
-router.get("/", verifyToken, async (req, res, next) => {
-    try {
-        const userId = req.userId;
-        
-        const conversations = await prisma.conversationMember.findMany({
-            where: {
-                userId: userId,
-            },
-            include: {
-                conversation: {
-                    include: {
-                        members: {
-                            include: {
-                                user: {
-                                    select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
+    // Get all conversations of user - FIXED VERSION
+    router.get("/", verifyToken, async (req, res, next) => {
+        try {
+            const userId = req.userId;
+            console.log(`🔍 Fetching conversations for user: ${userId}`);
+            
+            const conversations = await prisma.conversationMember.findMany({
+                where: {
+                    userId: userId,
+                },
+                include: {
+                    conversation: {
+                        include: {
+                            members: {
+                                include: {
+                                    user: {
+                                        select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
+                                    },
                                 },
                             },
-                        },
-                        messages: {
-                            orderBy: { createdAt: 'desc' },
-                            take: 1, // Get the latest message
-                            include: {
-                                sender: {
-                                    select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
+                            messages: {
+                                orderBy: { createdAt: 'desc' },
+                                take: 1, // Get the latest message
+                                include: {
+                                    sender: {
+                                        select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
+                                    },
+                                    imageAttachments: true,
+                                    videoAttachments: true,
                                 },
-                                imageAttachments: true,
-                                videoAttachments: true,
                             },
                         },
                     },
                 },
-            },
-            orderBy: {
-                conversation: {
-                    updatedAt: 'desc', // Order by most recently updated conversation
+                orderBy: {
+                    conversation: {
+                        updatedAt: 'desc', // Order by most recently updated conversation
+                    },
                 },
-            },
-        });
-
-        // NEW: Calculate unread count for each conversation
-        const formattedConversations = await Promise.all(conversations.map(async (cm) => {
-            // Count unread messages in this conversation
-            const unreadCount = await prisma.message.count({
-                where: {
-                    conversationId: cm.conversation.id,
-                    senderId: { not: userId }, // Don't count own messages
-                    createdAt: { gt: cm.lastReadAt || new Date(0) } // Messages newer than lastReadAt
-                }
             });
 
-            return {
-                id: cm.conversation.id,
-                name: cm.conversation.name,
-                updatedAt: cm.conversation.updatedAt,
-                lastMessage: cm.conversation.messages[0] || null,
-                participants: cm.conversation.members
-                    .filter(member => member.userId !== userId) // Exclude the current user
-                    .map(member => member.user),
-                unreadCount: unreadCount, // NEW: Add unread count per conversation
-                lastReadAt: cm.lastReadAt // NEW: Include lastReadAt for debugging
-            };
-        }));
+            console.log(`📊 Found ${conversations.length} conversations for user ${userId}`);
 
-        res.json(formattedConversations);
-    } catch (error) {
-        console.error("Error fetching conversations:", error);
-        next(error);
-    }
-});
+            // FIXED: Calculate unread count for each conversation safely
+            const formattedConversations = [];
+            
+            for (const cm of conversations) {
+                try {
+                    console.log(`🔢 Calculating unread count for conversation ${cm.conversation.id}`);
+                    console.log(`📅 User's lastReadAt: ${cm.lastReadAt}`);
+                    
+                    // Count unread messages in this conversation
+                    const unreadCount = await prisma.message.count({
+                        where: {
+                            conversationId: cm.conversation.id,
+                            senderId: { not: userId }, // Don't count own messages
+                            createdAt: { gt: cm.lastReadAt || new Date(0) } // Messages newer than lastReadAt
+                        }
+                    });
+
+                    console.log(`💬 Conversation ${cm.conversation.id} has ${unreadCount} unread messages`);
+
+                    const formattedConversation = {
+                        id: cm.conversation.id,
+                        name: cm.conversation.name,
+                        updatedAt: cm.conversation.updatedAt,
+                        lastMessage: cm.conversation.messages[0] || null,
+                        participants: cm.conversation.members
+                            .filter(member => member.userId !== userId) // Exclude the current user
+                            .map(member => member.user),
+                        unreadCount: unreadCount, // NEW: Add unread count per conversation
+                        lastReadAt: cm.lastReadAt // NEW: Include lastReadAt for debugging
+                    };
+
+                    formattedConversations.push(formattedConversation);
+                } catch (conversationError) {
+                    console.error(`❌ Error processing conversation ${cm.conversation.id}:`, conversationError);
+                    // If there's an error with one conversation, include it with 0 unread count
+                    formattedConversations.push({
+                        id: cm.conversation.id,
+                        name: cm.conversation.name,
+                        updatedAt: cm.conversation.updatedAt,
+                        lastMessage: cm.conversation.messages[0] || null,
+                        participants: cm.conversation.members
+                            .filter(member => member.userId !== userId)
+                            .map(member => member.user),
+                        unreadCount: 0, // Default to 0 if there's an error
+                        lastReadAt: cm.lastReadAt
+                    });
+                }
+            }
+
+            console.log(`✅ Returning ${formattedConversations.length} formatted conversations`);
+            console.log('🔔 Conversations with unread counts:', formattedConversations.map(c => ({
+                id: c.id,
+                participants: c.participants.map(p => p.firstName).join(', '),
+                unreadCount: c.unreadCount
+            })));
+            
+            res.json(formattedConversations);
+        } catch (error) {
+            console.error("❌ Error fetching conversations:", error);
+            console.error("Stack trace:", error.stack);
+            next(error);
+        }
+    });
 
     // Start a new conversation
     router.post("/direct", verifyToken, async (req, res, next) => {
@@ -268,25 +301,25 @@ router.get("/", verifyToken, async (req, res, next) => {
 
                         imageAttachments.push({ messageId: newMessage.id, url: fileUrl });
                     } else if (['.mp4', '.mpeg', '.mov'].includes(fileExtension)) {
-    // NEW: Compress video files
-    const compressedFilename = `compressed-${file.filename.replace(fileExtension, '.mp4')}`;
-    const compressedFilePath = path.join(OPTIMIZED_IMAGES_DIR, compressedFilename);
-    const fileUrl = `/uploads/optimized/${compressedFilename}`;
+        // NEW: Compress video files
+        const compressedFilename = `compressed-${file.filename.replace(fileExtension, '.mp4')}`;
+        const compressedFilePath = path.join(OPTIMIZED_IMAGES_DIR, compressedFilename);
+        const fileUrl = `/uploads/optimized/${compressedFilename}`;
 
-    try {
-        await compressVideo(originalFilePath, compressedFilePath);
-        videoAttachments.push({ messageId: newMessage.id, url: fileUrl });
-        
-        // Optional: Delete original file to save space
-        await fs.unlink(originalFilePath);
-        console.log('Video compressed successfully');
-    } catch (compressionError) {
-        console.error('Video compression failed, using original:', compressionError);
-        // Fallback to original if compression fails
-        const fileUrl = `/uploads/originals/${file.filename}`;
-        videoAttachments.push({ messageId: newMessage.id, url: fileUrl });
+        try {
+            await compressVideo(originalFilePath, compressedFilePath);
+            videoAttachments.push({ messageId: newMessage.id, url: fileUrl });
+            
+            // Optional: Delete original file to save space
+            await fs.unlink(originalFilePath);
+            console.log('Video compressed successfully');
+        } catch (compressionError) {
+            console.error('Video compression failed, using original:', compressionError);
+            // Fallback to original if compression fails
+            const fileUrl = `/uploads/originals/${file.filename}`;
+            videoAttachments.push({ messageId: newMessage.id, url: fileUrl });
+        }
     }
-}
                 }
 
                 await prisma.imageAttachment.createMany({ data: imageAttachments });
