@@ -94,58 +94,75 @@ const compressVideo = (inputPath, outputPath) => {
     }
 
     // Get all conversations of user
-    router.get("/", verifyToken, async (req, res, next) => {
-        try {
-            const conversations = await prisma.conversationMember.findMany({
-                where: {
-                    userId: req.userId,
-                },
-                include: {
-                    conversation: {
-                        include: {
-                            members: {
-                                include: {
-                                    user: {
-                                        select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
-                                    },
+router.get("/", verifyToken, async (req, res, next) => {
+    try {
+        const userId = req.userId;
+        
+        const conversations = await prisma.conversationMember.findMany({
+            where: {
+                userId: userId,
+            },
+            include: {
+                conversation: {
+                    include: {
+                        members: {
+                            include: {
+                                user: {
+                                    select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
                                 },
                             },
-                            messages: {
-                                orderBy: { createdAt: 'desc' },
-                                take: 1, // Get the latest message
-                                include: {
-                                    sender: {
-                                        select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
-                                    },
-                                    imageAttachments: true,
-                                    videoAttachments: true,
+                        },
+                        messages: {
+                            orderBy: { createdAt: 'desc' },
+                            take: 1, // Get the latest message
+                            include: {
+                                sender: {
+                                    select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
                                 },
+                                imageAttachments: true,
+                                videoAttachments: true,
                             },
                         },
                     },
                 },
-                orderBy: {
-                    conversation: {
-                        updatedAt: 'desc', // Order by most recently updated conversation
-                    },
+            },
+            orderBy: {
+                conversation: {
+                    updatedAt: 'desc', // Order by most recently updated conversation
                 },
+            },
+        });
+
+        // NEW: Calculate unread count for each conversation
+        const formattedConversations = await Promise.all(conversations.map(async (cm) => {
+            // Count unread messages in this conversation
+            const unreadCount = await prisma.message.count({
+                where: {
+                    conversationId: cm.conversation.id,
+                    senderId: { not: userId }, // Don't count own messages
+                    createdAt: { gt: cm.lastReadAt || new Date(0) } // Messages newer than lastReadAt
+                }
             });
-            // Map the result to a cleaner format if needed
-            const formattedConversations = conversations.map(cm => ({
+
+            return {
                 id: cm.conversation.id,
                 name: cm.conversation.name,
                 updatedAt: cm.conversation.updatedAt,
                 lastMessage: cm.conversation.messages[0] || null,
                 participants: cm.conversation.members
-                    .filter(member => member.userId !== req.userId) // Exclude the current user
+                    .filter(member => member.userId !== userId) // Exclude the current user
                     .map(member => member.user),
-            }));
-            res.json(formattedConversations);
-        } catch (error) {
-            console.error("Error fetching conversations:", error);
-            next(error);
-        }
-    });
+                unreadCount: unreadCount, // NEW: Add unread count per conversation
+                lastReadAt: cm.lastReadAt // NEW: Include lastReadAt for debugging
+            };
+        }));
+
+        res.json(formattedConversations);
+    } catch (error) {
+        console.error("Error fetching conversations:", error);
+        next(error);
+    }
+});
 
     // Start a new conversation
     router.post("/direct", verifyToken, async (req, res, next) => {

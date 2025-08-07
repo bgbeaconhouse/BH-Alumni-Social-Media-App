@@ -1,8 +1,8 @@
-
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert, Platform, StatusBar } from 'react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { Link, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useNotifications } from '../hooks/useNotifications';
 
 const Messaging = () => {
@@ -11,7 +11,11 @@ const Messaging = () => {
   const [error, setError] = useState(null);
   const router = useRouter();
 
-  // NEW: Use notification context
+  // NEW: WebSocket connection for real-time updates
+  const websocket = useRef(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  // Use notification context
   const { unreadCounts, refreshUnreadCounts } = useNotifications();
 
   // Function to retrieve the JWT token from SecureStore
@@ -24,6 +28,29 @@ const Messaging = () => {
       return null;
     }
   };
+
+  // NEW: Get current user ID from token
+  const getUserId = useCallback(async () => {
+    const token = await getToken();
+    if (token) {
+      try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+
+        const payload = JSON.parse(jsonPayload);
+        setCurrentUserId(payload.id);
+        return payload.id;
+      } catch (e) {
+        console.error("Error decoding token:", e);
+        setCurrentUserId(null);
+        return null;
+      }
+    }
+    return null;
+  }, []);
 
   // Function to fetch conversations from the backend
   const fetchConversations = async () => {
@@ -53,6 +80,11 @@ const Messaging = () => {
       }
 
       const data = await response.json();
+      console.log('🔔 Conversations with unread counts:', data.map(c => ({
+        id: c.id, 
+        name: c.participants.map(p => p.firstName).join(', '),
+        unreadCount: c.unreadCount
+      })));
       setConversations(data);
     } catch (err) {
       console.error("Error fetching conversations:", err);
@@ -62,6 +94,55 @@ const Messaging = () => {
       setLoading(false);
     }
   };
+
+  // NEW: WebSocket connection setup
+  const connectWebSocket = useCallback(async () => {
+    const token = await getToken();
+    const userId = await getUserId();
+    
+    if (token && userId) {
+      try {
+        websocket.current = new WebSocket(`wss://bh-alumni-social-media-app.onrender.com/?token=${token}`);
+
+        websocket.current.onopen = () => {
+          console.log("🔌 Messaging WebSocket connected");
+        };
+
+        websocket.current.onmessage = (event) => {
+          try {
+            const parsedMessage = JSON.parse(event.data);
+            
+            if (parsedMessage.type === 'newMessage') {
+              const message = parsedMessage.message;
+              console.log("📨 New message received in messaging list:", message.conversationId);
+              
+              // Only refresh if the message is not from the current user
+              if (message.senderId !== userId) {
+                // Refresh conversations to get updated unread counts
+                fetchConversations();
+                // Also refresh global unread counts
+                refreshUnreadCounts();
+              }
+            }
+          } catch (e) {
+            console.error("Error parsing WebSocket message:", e);
+          }
+        };
+
+        websocket.current.onclose = () => {
+          console.log("🔌 Messaging WebSocket disconnected. Attempting to reconnect...");
+          setTimeout(connectWebSocket, 3000);
+        };
+
+        websocket.current.onerror = (error) => {
+          console.error("🔌 Messaging WebSocket error:", error);
+          websocket.current?.close();
+        };
+      } catch (error) {
+        console.error("Error connecting to WebSocket:", error);
+      }
+    }
+  }, [getUserId, refreshUnreadCounts]);
 
   // DEBUG: Reset unread counts function
   const resetUnreadCounts = async () => {
@@ -88,13 +169,45 @@ const Messaging = () => {
     }
   };
 
+  // NEW: Enhanced useEffect with WebSocket setup
   useEffect(() => {
-    fetchConversations();
-    // Refresh unread counts when messaging screen loads
-    refreshUnreadCounts();
-  }, [refreshUnreadCounts]);
+    let isMounted = true;
 
-  // NEW: Handle conversation navigation with read marking
+    const initializeComponent = async () => {
+      if (isMounted) {
+        await getUserId();
+        fetchConversations();
+        refreshUnreadCounts();
+        connectWebSocket();
+      }
+    };
+
+    initializeComponent();
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      if (websocket.current && websocket.current.readyState === WebSocket.OPEN) {
+        websocket.current.close();
+      }
+    };
+  }, [getUserId, refreshUnreadCounts, connectWebSocket]);
+
+  // NEW: Refresh conversations when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('📱 Messaging screen focused - refreshing conversations');
+      fetchConversations();
+      refreshUnreadCounts();
+      
+      // Reconnect WebSocket if needed
+      if (!websocket.current || websocket.current.readyState !== WebSocket.OPEN) {
+        connectWebSocket();
+      }
+    }, [refreshUnreadCounts, connectWebSocket])
+  );
+
+  // Handle conversation navigation with read marking
   const handleConversationPress = (conversationId) => {
     router.push({
       pathname: '/seeMessages',
@@ -106,7 +219,52 @@ const Messaging = () => {
     router.push('/newMessage');
   };
 
-  if (loading) {
+  // NEW: Render conversation item with highlighting
+  const renderConversationItem = ({ item }) => {
+    const hasUnreadMessages = item.unreadCount > 0;
+    const participantNames = item.name ? item.name : item.participants.map(p => p.firstName).join(', ');
+    
+    return (
+      <TouchableOpacity 
+        style={[
+          styles.conversationItem,
+          hasUnreadMessages && styles.conversationItemUnread
+        ]}
+        onPress={() => handleConversationPress(item.id)}
+      >
+        <View style={styles.conversationContent}>
+          <View style={styles.conversationHeader}>
+            <Text style={[
+              styles.conversationName,
+              hasUnreadMessages && styles.conversationNameUnread
+            ]}>
+              {participantNames}
+            </Text>
+            {/* NEW: Show unread count badge */}
+            {hasUnreadMessages && (
+              <View style={styles.conversationUnreadBadge}>
+                <Text style={styles.conversationUnreadText}>
+                  {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
+          {item.lastMessage ? (
+            <Text style={[
+              styles.lastMessage,
+              hasUnreadMessages && styles.lastMessageUnread
+            ]}>
+              {item.lastMessage.sender.firstName}: {item.lastMessage.content ? item.lastMessage.content : 'Attachment'}
+            </Text>
+          ) : (
+            <Text style={styles.noMessage}>No messages yet</Text>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading && conversations.length === 0) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
@@ -141,7 +299,7 @@ const Messaging = () => {
         </View>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>Messages</Text>
-          {/* NEW: Show unread count badge */}
+          {/* Show total unread count badge */}
           {unreadCounts.unreadMessagesCount > 0 && (
             <View style={styles.unreadBadge}>
               <Text style={styles.unreadBadgeText}>
@@ -157,7 +315,7 @@ const Messaging = () => {
         </View>
       </View>
 
-      {/* DEBUG BUTTON */}
+      {/* DEBUG BUTTON - Remove this in production */}
       <TouchableOpacity 
         style={styles.debugButton} 
         onPress={resetUnreadCounts}
@@ -185,29 +343,7 @@ const Messaging = () => {
         <FlatList
           data={conversations}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={styles.conversationItem}
-              onPress={() => handleConversationPress(item.id)}
-            >
-              <View style={styles.conversationContent}>
-                <View style={styles.conversationHeader}>
-                  <Text style={styles.conversationName}>
-                    {item.name ? item.name : item.participants.map(p => p.firstName).join(', ')}
-                  </Text>
-                  {/* NEW: Show unread indicator for individual conversations if needed */}
-                  {/* You could add individual conversation unread counts here if you enhance the backend */}
-                </View>
-                {item.lastMessage ? (
-                  <Text style={styles.lastMessage}>
-                    {item.lastMessage.sender.firstName}: {item.lastMessage.content ? item.lastMessage.content : 'Attachment'}
-                  </Text>
-                ) : (
-                  <Text style={styles.noMessage}>No messages yet</Text>
-                )}
-              </View>
-            </TouchableOpacity>
-          )}
+          renderItem={renderConversationItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshing={loading}
@@ -266,7 +402,7 @@ const styles = StyleSheet.create({
     color: '#2c3e50',
     letterSpacing: 2,
   },
-  // NEW: Unread badge styles
+  // Total unread badge styles
   unreadBadge: {
     backgroundColor: '#e74c3c',
     borderRadius: 12,
@@ -282,7 +418,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  // DEBUG BUTTON STYLES
+  // DEBUG BUTTON STYLES - Remove in production
   debugButton: {
     backgroundColor: '#e74c3c',
     padding: 15,
@@ -387,10 +523,19 @@ const styles = StyleSheet.create({
   conversationItem: {
     marginBottom: 1,
   },
+  // NEW: Unread conversation styling
+  conversationItemUnread: {
+    backgroundColor: '#f8f9fa', // Light highlight background
+    borderRadius: 8,
+    marginBottom: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3498db', // Blue accent line for unread conversations
+  },
   conversationContent: {
     paddingVertical: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#ecf0f1',
+    paddingHorizontal: 16,
   },
   conversationHeader: {
     flexDirection: 'row',
@@ -403,6 +548,28 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: '#2c3e50',
     letterSpacing: 0.5,
+    flex: 1,
+  },
+  // NEW: Bold styling for unread conversations
+  conversationNameUnread: {
+    fontWeight: '600',
+    color: '#1a252f',
+  },
+  // NEW: Per-conversation unread badge
+  conversationUnreadBadge: {
+    backgroundColor: '#e74c3c',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+  conversationUnreadText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   lastMessage: {
     fontSize: 14,
@@ -410,6 +577,11 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     letterSpacing: 0.5,
     lineHeight: 18,
+  },
+  // NEW: Styling for unread last message
+  lastMessageUnread: {
+    fontWeight: '500',
+    color: '#5a6c7d',
   },
   noMessage: {
     fontSize: 14,
