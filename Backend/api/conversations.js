@@ -93,59 +93,112 @@ const compressVideo = (inputPath, outputPath) => {
         console.warn("Express app instance not provided. Static file serving and caching headers might not be configured correctly.");
     }
 
-    // Get all conversations of user
-    router.get("/", verifyToken, async (req, res, next) => {
-        try {
-            const conversations = await prisma.conversationMember.findMany({
-                where: {
-                    userId: req.userId,
-                },
-                include: {
-                    conversation: {
-                        include: {
-                            members: {
-                                include: {
-                                    user: {
-                                        select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
-                                    },
+// Get all conversations of user - WITH UNREAD COUNTS
+router.get("/", verifyToken, async (req, res, next) => {
+    try {
+        const userId = req.userId;
+        console.log(`🔍 Fetching conversations for user: ${userId}`);
+        
+        const conversations = await prisma.conversationMember.findMany({
+            where: {
+                userId: userId,
+            },
+            include: {
+                conversation: {
+                    include: {
+                        members: {
+                            include: {
+                                user: {
+                                    select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
                                 },
                             },
-                            messages: {
-                                orderBy: { createdAt: 'desc' },
-                                take: 1, // Get the latest message
-                                include: {
-                                    sender: {
-                                        select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
-                                    },
-                                    imageAttachments: true,
-                                    videoAttachments: true,
+                        },
+                        messages: {
+                            orderBy: { createdAt: 'desc' },
+                            take: 1, // Get the latest message
+                            include: {
+                                sender: {
+                                    select: { id: true, username: true, firstName: true, lastName: true, profilePictureUrl: true },
                                 },
+                                imageAttachments: true,
+                                videoAttachments: true,
                             },
                         },
                     },
                 },
-                orderBy: {
-                    conversation: {
-                        updatedAt: 'desc', // Order by most recently updated conversation
-                    },
+            },
+            orderBy: {
+                conversation: {
+                    updatedAt: 'desc', // Order by most recently updated conversation
                 },
-            });
-            // Map the result to a cleaner format if needed
-            const formattedConversations = conversations.map(cm => ({
-                id: cm.conversation.id,
-                name: cm.conversation.name,
-                updatedAt: cm.conversation.updatedAt,
-                lastMessage: cm.conversation.messages[0] || null,
-                participants: cm.conversation.members
-                    .filter(member => member.userId !== req.userId) // Exclude the current user
-                    .map(member => member.user),
-            }));
-            res.json(formattedConversations);
-        } catch (error) {
-            console.error("Error fetching conversations:", error);
-            next(error);
+            },
+        });
+
+        console.log(`📊 Found ${conversations.length} conversations for user ${userId}`);
+
+        // Calculate unread count for each conversation safely
+        const formattedConversations = [];
+        
+        for (const cm of conversations) {
+            try {
+                console.log(`🔢 Calculating unread count for conversation ${cm.conversation.id}`);
+                console.log(`📅 User's lastReadAt: ${cm.lastReadAt}`);
+                
+                // Count unread messages in this conversation
+                const unreadCount = await prisma.message.count({
+                    where: {
+                        conversationId: cm.conversation.id,
+                        senderId: { not: userId }, // Don't count own messages
+                        createdAt: { gt: cm.lastReadAt || new Date(0) } // Messages newer than lastReadAt
+                    }
+                });
+
+                console.log(`💬 Conversation ${cm.conversation.id} has ${unreadCount} unread messages`);
+
+                const formattedConversation = {
+                    id: cm.conversation.id,
+                    name: cm.conversation.name,
+                    updatedAt: cm.conversation.updatedAt,
+                    lastMessage: cm.conversation.messages[0] || null,
+                    participants: cm.conversation.members
+                        .filter(member => member.userId !== userId) // Exclude the current user
+                        .map(member => member.user),
+                    unreadCount: unreadCount, // Add unread count per conversation
+                    lastReadAt: cm.lastReadAt // Include lastReadAt for debugging
+                };
+
+                formattedConversations.push(formattedConversation);
+            } catch (conversationError) {
+                console.error(`❌ Error processing conversation ${cm.conversation.id}:`, conversationError);
+                // If there's an error with one conversation, include it with 0 unread count
+                formattedConversations.push({
+                    id: cm.conversation.id,
+                    name: cm.conversation.name,
+                    updatedAt: cm.conversation.updatedAt,
+                    lastMessage: cm.conversation.messages[0] || null,
+                    participants: cm.conversation.members
+                        .filter(member => member.userId !== userId)
+                        .map(member => member.user),
+                    unreadCount: 0, // Default to 0 if there's an error
+                    lastReadAt: cm.lastReadAt
+                });
+            }
         }
-    });
+
+        console.log(`✅ Returning ${formattedConversations.length} formatted conversations`);
+        console.log('🔔 Conversations with unread counts:', formattedConversations.map(c => ({
+            id: c.id,
+            participants: c.participants.map(p => p.firstName).join(', '),
+            unreadCount: c.unreadCount
+        })));
+        
+        res.json(formattedConversations);
+    } catch (error) {
+        console.error("❌ Error fetching conversations:", error);
+        console.error("Stack trace:", error.stack);
+        next(error);
+    }
+});
 
     // Start a new conversation
     router.post("/direct", verifyToken, async (req, res, next) => {

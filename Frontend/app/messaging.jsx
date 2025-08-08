@@ -230,7 +230,7 @@ const Messaging = () => {
     }
   };
 
-  // Enhanced useEffect with proper auth handling
+  // Enhanced useEffect with proper auth handling - FIXED DEPENDENCIES
   useEffect(() => {
     let isMounted = true;
 
@@ -274,32 +274,26 @@ const Messaging = () => {
         websocket.current.close();
       }
     };
-  }, [isAuthenticated, isLoading]); // Only depend on auth state
+  }, [isAuthenticated, isLoading]); // Only depend on auth state, not functions
 
-  // Enhanced focus effect with better auth handling
+  // Enhanced focus effect with better auth handling - FIXED INFINITE LOOP
   useFocusEffect(
     useCallback(() => {
       console.log('📱 Messaging screen focused');
       
-      const handleFocus = async () => {
-        // Only refresh if we're authenticated and not loading
-        if (isAuthenticated && !isLoading) {
-          console.log('🔄 Refreshing conversations on focus...');
-          fetchConversations();
-          refreshUnreadCounts();
-          
-          // Reconnect WebSocket if needed
-          if (!websocket.current || websocket.current.readyState !== WebSocket.OPEN) {
-            connectWebSocket();
-          }
-        } else {
-          console.log('⏳ Auth not ready, skipping focus refresh');
-        }
-      };
-
-      // Add a small delay to avoid race conditions
-      setTimeout(handleFocus, 500);
-    }, [isAuthenticated, isLoading, fetchConversations, refreshUnreadCounts, connectWebSocket])
+      // Only refresh on focus if we have conversations and user is authenticated
+      if (isAuthenticated && !isLoading && conversations.length === 0) {
+        console.log('🔄 No conversations loaded, fetching on focus...');
+        fetchConversations();
+        refreshUnreadCounts();
+      }
+      
+      // Only reconnect WebSocket if it's not connected
+      if (isAuthenticated && (!websocket.current || websocket.current.readyState !== WebSocket.OPEN)) {
+        console.log('🔌 WebSocket not connected, reconnecting...');
+        connectWebSocket();
+      }
+    }, [isAuthenticated, isLoading, conversations.length]) // Removed functions from dependencies
   );
 
   // Handle conversation navigation with read marking
