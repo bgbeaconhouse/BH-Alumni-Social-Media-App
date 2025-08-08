@@ -254,7 +254,7 @@ app.post("/api/login", async (req, res, next) => {
         if (!passwordMatch) {
             return res.status(401).json("Account not found");
         }
-        const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET);
+        const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, {expiresIn: '7d'});
         res.status(200).json({ token: token, message: "Login successful" });
     } catch (error) {
         next(error);

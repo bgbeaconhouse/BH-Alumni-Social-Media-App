@@ -18,47 +18,26 @@ const Messaging = () => {
 
   // Use notification context and auth hook
   const { unreadCounts, refreshUnreadCounts } = useNotifications();
-  const { isAuthenticated, checkAuthStatus, user } = useAuth();
+  const { isAuthenticated, isLoading, checkAuthStatus, user, getAuthToken } = useAuth();
 
-  // Enhanced function to retrieve JWT token with auth validation
+  // Enhanced function to retrieve JWT token with better auth handling
   const getToken = async () => {
     try {
-      // First check if we're authenticated using the auth hook
-      if (!isAuthenticated) {
-        console.log("❌ User not authenticated according to auth hook");
-        
-        // Try to refresh auth status
-        await checkAuthStatus();
-        
-        // If still not authenticated after refresh, redirect to login
-        if (!isAuthenticated) {
-          console.log("❌ Still not authenticated after refresh, redirecting to login");
-          Alert.alert(
-            "Authentication Required",
-            "Please log in to view your messages",
-            [
-              {
-                text: "Go to Login",
-                onPress: () => router.replace('/login')
-              }
-            ]
-          );
-          return null;
-        }
-      }
-
-      const token = await SecureStore.getItemAsync('authToken');
+      console.log("🎫 Getting auth token...");
+      
+      // Use the auth hook's getAuthToken method which handles expiration
+      const token = await getAuthToken();
+      
       if (!token) {
-        console.error("❌ No auth token found in SecureStore");
-        router.replace('/login');
+        console.log("❌ No token available from auth hook");
         return null;
       }
 
-      console.log("✅ Auth token retrieved successfully");
+      console.log("✅ Token retrieved successfully from auth hook");
       return token;
+      
     } catch (e) {
-      console.error("❌ Failed to load token from secure storage", e);
-      router.replace('/login');
+      console.error("❌ Failed to get token:", e);
       return null;
     }
   };
@@ -93,15 +72,22 @@ const Messaging = () => {
     setError(null);
 
     try {
-      // Check authentication status first
-      console.log("🔍 Checking authentication before API call...");
-      console.log("📊 Current auth state:", { isAuthenticated, hasUser: !!user });
+      console.log("🔍 Current auth state:", { isAuthenticated, isLoading, hasUser: !!user });
       
-      // Always try to get a fresh token
+      // If auth is still loading, wait a bit
+      if (isLoading) {
+        console.log("⏳ Auth still loading, waiting...");
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Get token using the auth hook method
       const token = await getToken();
       if (!token) {
-        console.log("❌ No token available after all auth checks");
-        setError("Please log in to view your messages");
+        console.log("❌ No valid token available");
+        // Only show error if we're definitely not authenticated and not loading
+        if (!isLoading && !isAuthenticated) {
+          setError("Please log in to view your messages");
+        }
         setLoading(false);
         return;
       }
@@ -118,18 +104,28 @@ const Messaging = () => {
       console.log("📡 API response status:", response.status);
 
       if (response.status === 401 || response.status === 403) {
-        console.log("❌ Authentication failed (401/403), token may be expired");
-        Alert.alert(
-          "Session Expired",
-          "Your session has expired. Please log in again.",
-          [
-            {
-              text: "Go to Login",
-              onPress: () => router.replace('/login')
-            }
-          ]
-        );
-        return;
+        console.log("❌ Authentication failed (401/403), refreshing auth...");
+        
+        // Try to refresh auth status
+        const authRefreshSuccess = await checkAuthStatus();
+        if (!authRefreshSuccess) {
+          Alert.alert(
+            "Session Expired",
+            "Your session has expired. Please log in again.",
+            [
+              {
+                text: "Go to Login",
+                onPress: () => router.replace('/login')
+              }
+            ]
+          );
+          return;
+        } else {
+          // If auth refresh worked, try the request again
+          console.log("🔄 Auth refreshed, retrying request...");
+          fetchConversations();
+          return;
+        }
       }
 
       if (!response.ok) {
@@ -151,8 +147,8 @@ const Messaging = () => {
       console.error("❌ Error fetching conversations:", err);
       setError(err.message || "An unexpected error occurred while fetching conversations.");
       
-      // Don't show alert for network errors, just log them
-      if (!err.message?.includes('fetch')) {
+      // Only show alert for non-auth related errors
+      if (!err.message?.includes('auth') && !err.message?.includes('token')) {
         Alert.alert("Error", err.message || "Could not load conversations.");
       }
     } finally {
@@ -240,29 +236,27 @@ const Messaging = () => {
 
     const initializeComponent = async () => {
       console.log("🎬 Initializing Messaging component...");
-      console.log("📊 Initial auth state:", { isAuthenticated, hasUser: !!user });
+      console.log("📊 Initial auth state:", { isAuthenticated, isLoading, hasUser: !!user });
       
       if (!isMounted) return;
 
-      // If not authenticated, try to refresh auth status
-      if (!isAuthenticated) {
-        console.log("❌ Not authenticated, attempting to refresh auth status...");
-        await checkAuthStatus();
-        
-        // Wait a moment for state to update
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Check if we're authenticated now
-        const token = await SecureStore.getItemAsync('authToken');
-        if (!token) {
-          console.log("❌ Still no token after auth refresh");
-          setError("Please log in to view your messages");
-          setLoading(false);
-          return;
-        }
+      // Wait for auth to finish loading
+      if (isLoading) {
+        console.log("⏳ Auth still loading, waiting for completion...");
+        return;
       }
 
-      if (isMounted) {
+      // If not loading and not authenticated, don't proceed
+      if (!isAuthenticated) {
+        console.log("❌ User not authenticated after loading completed");
+        setError("Please log in to view your messages");
+        setLoading(false);
+        return;
+      }
+
+      // Proceed with initialization if authenticated
+      if (isMounted && isAuthenticated) {
+        console.log("✅ User authenticated, initializing component...");
         await getUserId();
         await fetchConversations();
         refreshUnreadCounts();
@@ -280,20 +274,32 @@ const Messaging = () => {
         websocket.current.close();
       }
     };
-  }, [isAuthenticated, checkAuthStatus, getUserId, refreshUnreadCounts, connectWebSocket]);
+  }, [isAuthenticated, isLoading]); // Only depend on auth state
 
-  // NEW: Refresh conversations when screen comes into focus
+  // Enhanced focus effect with better auth handling
   useFocusEffect(
     useCallback(() => {
-      console.log('📱 Messaging screen focused - refreshing conversations');
-      fetchConversations();
-      refreshUnreadCounts();
+      console.log('📱 Messaging screen focused');
       
-      // Reconnect WebSocket if needed
-      if (!websocket.current || websocket.current.readyState !== WebSocket.OPEN) {
-        connectWebSocket();
-      }
-    }, [refreshUnreadCounts, connectWebSocket])
+      const handleFocus = async () => {
+        // Only refresh if we're authenticated and not loading
+        if (isAuthenticated && !isLoading) {
+          console.log('🔄 Refreshing conversations on focus...');
+          fetchConversations();
+          refreshUnreadCounts();
+          
+          // Reconnect WebSocket if needed
+          if (!websocket.current || websocket.current.readyState !== WebSocket.OPEN) {
+            connectWebSocket();
+          }
+        } else {
+          console.log('⏳ Auth not ready, skipping focus refresh');
+        }
+      };
+
+      // Add a small delay to avoid race conditions
+      setTimeout(handleFocus, 500);
+    }, [isAuthenticated, isLoading, fetchConversations, refreshUnreadCounts, connectWebSocket])
   );
 
   // Handle conversation navigation with read marking
@@ -353,6 +359,18 @@ const Messaging = () => {
     );
   };
 
+  // Show loading state while auth is being determined
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <ActivityIndicator size="large" color="#2c3e50" />
+        <Text style={styles.loadingText}>Checking authentication...</Text>
+      </View>
+    );
+  }
+
+  // Show loading for conversations
   if (loading && conversations.length === 0) {
     return (
       <View style={styles.loadingContainer}>
