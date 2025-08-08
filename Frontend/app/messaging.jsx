@@ -1,8 +1,10 @@
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert, Platform, StatusBar } from 'react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { Link, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useNotifications } from '../hooks/useNotifications';
+import { useAuth } from '../hooks/useAuth';
 
 const Messaging = () => {
   const [conversations, setConversations] = useState([]);
@@ -10,34 +12,101 @@ const Messaging = () => {
   const [error, setError] = useState(null);
   const router = useRouter();
 
-  // NEW: Use notification context
-  const { unreadCounts, refreshUnreadCounts } = useNotifications();
+  // NEW: WebSocket connection for real-time updates
+  const websocket = useRef(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
-  // Function to retrieve the JWT token from SecureStore
+  // Use notification context and auth hook
+  const { unreadCounts, refreshUnreadCounts } = useNotifications();
+  const { isAuthenticated, checkAuthStatus, user } = useAuth();
+
+  // Enhanced function to retrieve JWT token with auth validation
   const getToken = async () => {
     try {
+      // First check if we're authenticated using the auth hook
+      if (!isAuthenticated) {
+        console.log("❌ User not authenticated according to auth hook");
+        
+        // Try to refresh auth status
+        await checkAuthStatus();
+        
+        // If still not authenticated after refresh, redirect to login
+        if (!isAuthenticated) {
+          console.log("❌ Still not authenticated after refresh, redirecting to login");
+          Alert.alert(
+            "Authentication Required",
+            "Please log in to view your messages",
+            [
+              {
+                text: "Go to Login",
+                onPress: () => router.replace('/login')
+              }
+            ]
+          );
+          return null;
+        }
+      }
+
       const token = await SecureStore.getItemAsync('authToken');
+      if (!token) {
+        console.error("❌ No auth token found in SecureStore");
+        router.replace('/login');
+        return null;
+      }
+
+      console.log("✅ Auth token retrieved successfully");
       return token;
     } catch (e) {
-      console.error("Failed to load token from secure storage", e);
+      console.error("❌ Failed to load token from secure storage", e);
+      router.replace('/login');
       return null;
     }
   };
 
-  // Function to fetch conversations from the backend
+  // NEW: Get current user ID from token
+  const getUserId = useCallback(async () => {
+    const token = await getToken();
+    if (token) {
+      try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+
+        const payload = JSON.parse(jsonPayload);
+        setCurrentUserId(payload.id);
+        return payload.id;
+      } catch (e) {
+        console.error("Error decoding token:", e);
+        setCurrentUserId(null);
+        return null;
+      }
+    }
+    return null;
+  }, []);
+
+  // Enhanced fetch conversations with proper auth handling
   const fetchConversations = async () => {
+    console.log("📱 Starting fetchConversations...");
     setLoading(true);
     setError(null);
 
     try {
+      // Check authentication status first
+      console.log("🔍 Checking authentication before API call...");
+      console.log("📊 Current auth state:", { isAuthenticated, hasUser: !!user });
+      
+      // Always try to get a fresh token
       const token = await getToken();
-
       if (!token) {
-        setError("Authentication token not found. Please log in.");
+        console.log("❌ No token available after all auth checks");
+        setError("Please log in to view your messages");
         setLoading(false);
         return;
       }
 
+      console.log("🚀 Making API request to fetch conversations...");
       const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/conversations', {
         method: 'GET',
         headers: {
@@ -46,21 +115,99 @@ const Messaging = () => {
         },
       });
 
+      console.log("📡 API response status:", response.status);
+
+      if (response.status === 401 || response.status === 403) {
+        console.log("❌ Authentication failed (401/403), token may be expired");
+        Alert.alert(
+          "Session Expired",
+          "Your session has expired. Please log in again.",
+          [
+            {
+              text: "Go to Login",
+              onPress: () => router.replace('/login')
+            }
+          ]
+        );
+        return;
+      }
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to fetch conversations');
       }
 
       const data = await response.json();
+      console.log('🔔 Conversations with unread counts:', data.map(c => ({
+        id: c.id, 
+        name: c.participants?.length ? c.participants.map(p => p.firstName).join(', ') : 'Unknown',
+        unreadCount: c.unreadCount || 0
+      })));
+      
       setConversations(data);
+      console.log("✅ Conversations loaded successfully");
+      
     } catch (err) {
-      console.error("Error fetching conversations:", err);
+      console.error("❌ Error fetching conversations:", err);
       setError(err.message || "An unexpected error occurred while fetching conversations.");
-      Alert.alert("Error", err.message || "Could not load conversations.");
+      
+      // Don't show alert for network errors, just log them
+      if (!err.message?.includes('fetch')) {
+        Alert.alert("Error", err.message || "Could not load conversations.");
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // NEW: WebSocket connection setup
+  const connectWebSocket = useCallback(async () => {
+    const token = await getToken();
+    const userId = await getUserId();
+    
+    if (token && userId) {
+      try {
+        websocket.current = new WebSocket(`wss://bh-alumni-social-media-app.onrender.com/?token=${token}`);
+
+        websocket.current.onopen = () => {
+          console.log("🔌 Messaging WebSocket connected");
+        };
+
+        websocket.current.onmessage = (event) => {
+          try {
+            const parsedMessage = JSON.parse(event.data);
+            
+            if (parsedMessage.type === 'newMessage') {
+              const message = parsedMessage.message;
+              console.log("📨 New message received in messaging list:", message.conversationId);
+              
+              // Only refresh if the message is not from the current user
+              if (message.senderId !== userId) {
+                // Refresh conversations to get updated unread counts
+                fetchConversations();
+                // Also refresh global unread counts
+                refreshUnreadCounts();
+              }
+            }
+          } catch (e) {
+            console.error("Error parsing WebSocket message:", e);
+          }
+        };
+
+        websocket.current.onclose = () => {
+          console.log("🔌 Messaging WebSocket disconnected. Attempting to reconnect...");
+          setTimeout(connectWebSocket, 3000);
+        };
+
+        websocket.current.onerror = (error) => {
+          console.error("🔌 Messaging WebSocket error:", error);
+          websocket.current?.close();
+        };
+      } catch (error) {
+        console.error("Error connecting to WebSocket:", error);
+      }
+    }
+  }, [getUserId, refreshUnreadCounts]);
 
   // DEBUG: Reset unread counts function
   const resetUnreadCounts = async () => {
@@ -87,13 +234,69 @@ const Messaging = () => {
     }
   };
 
+  // Enhanced useEffect with proper auth handling
   useEffect(() => {
-    fetchConversations();
-    // Refresh unread counts when messaging screen loads
-    refreshUnreadCounts();
-  }, [refreshUnreadCounts]);
+    let isMounted = true;
 
-  // NEW: Handle conversation navigation with read marking
+    const initializeComponent = async () => {
+      console.log("🎬 Initializing Messaging component...");
+      console.log("📊 Initial auth state:", { isAuthenticated, hasUser: !!user });
+      
+      if (!isMounted) return;
+
+      // If not authenticated, try to refresh auth status
+      if (!isAuthenticated) {
+        console.log("❌ Not authenticated, attempting to refresh auth status...");
+        await checkAuthStatus();
+        
+        // Wait a moment for state to update
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Check if we're authenticated now
+        const token = await SecureStore.getItemAsync('authToken');
+        if (!token) {
+          console.log("❌ Still no token after auth refresh");
+          setError("Please log in to view your messages");
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (isMounted) {
+        await getUserId();
+        await fetchConversations();
+        refreshUnreadCounts();
+        connectWebSocket();
+      }
+    };
+
+    initializeComponent();
+
+    // Cleanup function
+    return () => {
+      console.log("🧹 Messaging component cleanup");
+      isMounted = false;
+      if (websocket.current && websocket.current.readyState === WebSocket.OPEN) {
+        websocket.current.close();
+      }
+    };
+  }, [isAuthenticated, checkAuthStatus, getUserId, refreshUnreadCounts, connectWebSocket]);
+
+  // NEW: Refresh conversations when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('📱 Messaging screen focused - refreshing conversations');
+      fetchConversations();
+      refreshUnreadCounts();
+      
+      // Reconnect WebSocket if needed
+      if (!websocket.current || websocket.current.readyState !== WebSocket.OPEN) {
+        connectWebSocket();
+      }
+    }, [refreshUnreadCounts, connectWebSocket])
+  );
+
+  // Handle conversation navigation with read marking
   const handleConversationPress = (conversationId) => {
     router.push({
       pathname: '/seeMessages',
@@ -105,7 +308,52 @@ const Messaging = () => {
     router.push('/newMessage');
   };
 
-  if (loading) {
+  // NEW: Render conversation item with highlighting
+  const renderConversationItem = ({ item }) => {
+    const hasUnreadMessages = item.unreadCount > 0;
+    const participantNames = item.name ? item.name : item.participants.map(p => p.firstName).join(', ');
+    
+    return (
+      <TouchableOpacity 
+        style={[
+          styles.conversationItem,
+          hasUnreadMessages && styles.conversationItemUnread
+        ]}
+        onPress={() => handleConversationPress(item.id)}
+      >
+        <View style={styles.conversationContent}>
+          <View style={styles.conversationHeader}>
+            <Text style={[
+              styles.conversationName,
+              hasUnreadMessages && styles.conversationNameUnread
+            ]}>
+              {participantNames}
+            </Text>
+            {/* NEW: Show unread count badge */}
+            {hasUnreadMessages && (
+              <View style={styles.conversationUnreadBadge}>
+                <Text style={styles.conversationUnreadText}>
+                  {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
+          {item.lastMessage ? (
+            <Text style={[
+              styles.lastMessage,
+              hasUnreadMessages && styles.lastMessageUnread
+            ]}>
+              {item.lastMessage.sender.firstName}: {item.lastMessage.content ? item.lastMessage.content : 'Attachment'}
+            </Text>
+          ) : (
+            <Text style={styles.noMessage}>No messages yet</Text>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading && conversations.length === 0) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
@@ -115,11 +363,30 @@ const Messaging = () => {
     );
   }
 
+  // Enhanced error display for authentication issues
+  if (error && (error.includes('Authentication') || error.includes('log in'))) {
+    return (
+      <View style={styles.errorContainer}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <Text style={styles.logo}>BH</Text>
+        <Text style={styles.errorText}>Authentication Required</Text>
+        <Text style={styles.errorSubtext}>Please log in to view your messages</Text>
+        <TouchableOpacity 
+          style={styles.retryButton} 
+          onPress={() => router.replace('/login')}
+        >
+          <Text style={styles.retryButtonText}>Go to Login</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (error) {
     return (
       <View style={styles.errorContainer}>
         <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
         <Text style={styles.errorText}>Unable to load messages</Text>
+        <Text style={styles.errorSubtext}>{error}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={fetchConversations}>
           <Text style={styles.retryButtonText}>Try Again</Text>
         </TouchableOpacity>
@@ -140,7 +407,7 @@ const Messaging = () => {
         </View>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>Messages</Text>
-          {/* NEW: Show unread count badge */}
+          {/* Show total unread count badge */}
           {unreadCounts.unreadMessagesCount > 0 && (
             <View style={styles.unreadBadge}>
               <Text style={styles.unreadBadgeText}>
@@ -156,7 +423,7 @@ const Messaging = () => {
         </View>
       </View>
 
-      {/* DEBUG BUTTON */}
+      {/* DEBUG BUTTON - Remove this in production */}
       <TouchableOpacity 
         style={styles.debugButton} 
         onPress={resetUnreadCounts}
@@ -184,29 +451,7 @@ const Messaging = () => {
         <FlatList
           data={conversations}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={styles.conversationItem}
-              onPress={() => handleConversationPress(item.id)}
-            >
-              <View style={styles.conversationContent}>
-                <View style={styles.conversationHeader}>
-                  <Text style={styles.conversationName}>
-                    {item.name ? item.name : item.participants.map(p => p.firstName).join(', ')}
-                  </Text>
-                  {/* NEW: Show unread indicator for individual conversations if needed */}
-                  {/* You could add individual conversation unread counts here if you enhance the backend */}
-                </View>
-                {item.lastMessage ? (
-                  <Text style={styles.lastMessage}>
-                    {item.lastMessage.sender.firstName}: {item.lastMessage.content ? item.lastMessage.content : 'Attachment'}
-                  </Text>
-                ) : (
-                  <Text style={styles.noMessage}>No messages yet</Text>
-                )}
-              </View>
-            </TouchableOpacity>
-          )}
+          renderItem={renderConversationItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshing={loading}
@@ -265,7 +510,7 @@ const styles = StyleSheet.create({
     color: '#2c3e50',
     letterSpacing: 2,
   },
-  // NEW: Unread badge styles
+  // Total unread badge styles
   unreadBadge: {
     backgroundColor: '#e74c3c',
     borderRadius: 12,
@@ -281,7 +526,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  // DEBUG BUTTON STYLES
+  // DEBUG BUTTON STYLES - Remove in production
   debugButton: {
     backgroundColor: '#e74c3c',
     padding: 15,
@@ -317,6 +562,14 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 18,
     color: '#e74c3c',
+    fontWeight: '300',
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: '#7f8c8d',
     fontWeight: '300',
     textAlign: 'center',
     marginBottom: 30,
@@ -386,10 +639,19 @@ const styles = StyleSheet.create({
   conversationItem: {
     marginBottom: 1,
   },
+  // NEW: Unread conversation styling
+  conversationItemUnread: {
+    backgroundColor: '#f8f9fa', // Light highlight background
+    borderRadius: 8,
+    marginBottom: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3498db', // Blue accent line for unread conversations
+  },
   conversationContent: {
     paddingVertical: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#ecf0f1',
+    paddingHorizontal: 16,
   },
   conversationHeader: {
     flexDirection: 'row',
@@ -402,6 +664,28 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: '#2c3e50',
     letterSpacing: 0.5,
+    flex: 1,
+  },
+  // NEW: Bold styling for unread conversations
+  conversationNameUnread: {
+    fontWeight: '600',
+    color: '#1a252f',
+  },
+  // NEW: Per-conversation unread badge
+  conversationUnreadBadge: {
+    backgroundColor: '#e74c3c',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+  conversationUnreadText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   lastMessage: {
     fontSize: 14,
@@ -409,6 +693,11 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     letterSpacing: 0.5,
     lineHeight: 18,
+  },
+  // NEW: Styling for unread last message
+  lastMessageUnread: {
+    fontWeight: '500',
+    color: '#5a6c7d',
   },
   noMessage: {
     fontSize: 14,
