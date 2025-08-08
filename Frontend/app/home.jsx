@@ -258,16 +258,19 @@ const styles = StyleSheet.create({
   menuLink: {
     width: '100%',
     alignItems: 'center',
+    justifyContent: 'center', // Add this
   },
   primaryMenuLink: {
     width: '100%',
     alignItems: 'center',
+    justifyContent: 'center', // Add this
   },
   menuItemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    width: '100%', // Add this to ensure full width
   },
   menuText: {
     color: '#2c3e50',
