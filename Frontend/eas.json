@@ -9,7 +9,10 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     },
     "production": {
       "autoIncrement": true,
@@ -18,6 +21,9 @@
         "env": {
           "EXPO_USE_HERMES": "false"
         }
+      },
+      "android": {
+        "buildType": "app-bundle"
       }
     },
     "production-apk": {
