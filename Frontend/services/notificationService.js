@@ -42,8 +42,10 @@ class NotificationService {
     }
   }
 
- // Enhanced registerForPushNotifications with more debugging
-static async registerForPushNotifications() {
+  /**
+   * Register for push notifications and get token
+   */
+ static async registerForPushNotifications() {
     try {
         console.log('🚀 STARTING PUSH NOTIFICATION REGISTRATION');
         
@@ -157,6 +159,9 @@ static async registerForPushNotifications() {
     }
   }
 
+  /**
+   * Set up notification listeners
+   */
 static setupNotificationListeners(onNotificationReceived, onNotificationTapped) {
     console.log('🎧 Setting up notification listeners...');
     
@@ -193,7 +198,6 @@ static setupNotificationListeners(onNotificationReceived, onNotificationTapped) 
     console.log('✅ Notification listeners set up successfully');
 }
 
-// Also add this method to check notification permissions in detail:
 static async debugNotificationPermissions() {
     try {
         console.log('🔍 DEBUGGING NOTIFICATION PERMISSIONS:');
@@ -327,7 +331,7 @@ static async debugNotificationPermissions() {
   }
 
   /**
-   * Mark conversation as read - WITH DEBUG LOGGING
+   * Mark conversation as read
    */
   static async markConversationAsRead(conversationId) {
     try {
