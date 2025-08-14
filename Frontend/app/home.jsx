@@ -4,6 +4,105 @@ import React, { useEffect } from 'react';
 import { Link, useRouter } from 'expo-router';
 import { useNotifications } from '../hooks/useNotifications';
 import { useAuth } from '../hooks/useAuth';
+import NotificationService from '../services/notificationService';
+import * as Notifications from 'expo-notifications';
+
+// DEBUG COMPONENT - Remove this in production
+const NotificationDebugger = () => {
+  
+  const testLocalNotification = async () => {
+    try {
+      console.log('🧪 Testing local notification...');
+      
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Test Local Notification",
+          body: "This is a local test notification",
+          data: { type: 'TEST' },
+          badge: 1,
+          sound: 'default',
+        },
+        trigger: { seconds: 1 },
+      });
+      
+      Alert.alert('Success', 'Local notification scheduled for 1 second from now');
+    } catch (error) {
+      console.error('❌ Error scheduling local notification:', error);
+      Alert.alert('Error', 'Failed to schedule local notification');
+    }
+  };
+
+  const debugPermissions = async () => {
+    try {
+      const debugInfo = await NotificationService.debugNotificationPermissions();
+      console.log('🔍 Debug info:', debugInfo);
+      
+      Alert.alert(
+        'Debug Info', 
+        `Permissions: ${debugInfo?.permissions?.status}\n` +
+        `Device: ${debugInfo?.deviceSupport}\n` +
+        `Badge Count: ${debugInfo?.badgeCount}\n` +
+        `Check console for full details`
+      );
+    } catch (error) {
+      console.error('❌ Error debugging permissions:', error);
+      Alert.alert('Error', 'Failed to debug permissions');
+    }
+  };
+
+  const testPushToken = async () => {
+    try {
+      console.log('🎫 Testing push token registration...');
+      const token = await NotificationService.registerForPushNotifications();
+      
+      if (token) {
+        const success = await NotificationService.sendTokenToBackend(token);
+        Alert.alert(
+          'Token Test', 
+          `Token: ${token.substring(0, 30)}...\n` +
+          `Backend Registration: ${success ? 'Success' : 'Failed'}`
+        );
+      } else {
+        Alert.alert('Token Test', 'Failed to get push token');
+      }
+    } catch (error) {
+      console.error('❌ Error testing push token:', error);
+      Alert.alert('Error', 'Failed to test push token');
+    }
+  };
+
+  const clearBadge = async () => {
+    try {
+      await Notifications.setBadgeCountAsync(0);
+      Alert.alert('Success', 'Badge cleared');
+    } catch (error) {
+      console.error('❌ Error clearing badge:', error);
+      Alert.alert('Error', 'Failed to clear badge');
+    }
+  };
+
+  return (
+    <View style={debugStyles.container}>
+      <Text style={debugStyles.title}>🔧 Notification Debugger</Text>
+      
+      <TouchableOpacity style={debugStyles.button} onPress={testLocalNotification}>
+        <Text style={debugStyles.buttonText}>Test Local Notification</Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity style={debugStyles.button} onPress={debugPermissions}>
+        <Text style={debugStyles.buttonText}>Debug Permissions</Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity style={debugStyles.button} onPress={testPushToken}>
+        <Text style={debugStyles.buttonText}>Test Push Token</Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity style={debugStyles.button} onPress={clearBadge}>
+        <Text style={debugStyles.buttonText}>Clear Badge</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
 
 const Home = () => {
   const router = useRouter();
@@ -90,6 +189,9 @@ const Home = () => {
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
+
+      {/* DEBUG SECTION - Remove this in production */}
+      <NotificationDebugger />
 
       {/* Main Content */}
       <View style={styles.content}>
@@ -258,19 +360,19 @@ const styles = StyleSheet.create({
   menuLink: {
     width: '100%',
     alignItems: 'center',
-    justifyContent: 'center', // Add this
+    justifyContent: 'center',
   },
   primaryMenuLink: {
     width: '100%',
     alignItems: 'center',
-    justifyContent: 'center', // Add this
+    justifyContent: 'center',
   },
   menuItemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-    width: '100%', // Add this to ensure full width
+    width: '100%',
   },
   menuText: {
     color: '#2c3e50',
@@ -343,5 +445,37 @@ const styles = StyleSheet.create({
     color: '#bdc3c7',
     fontWeight: '300',
     letterSpacing: 1,
+  },
+});
+
+// Debug styles for the notification debugger
+const debugStyles = StyleSheet.create({
+  container: {
+    padding: 15,
+    backgroundColor: '#fff3cd',
+    marginHorizontal: 20,
+    marginTop: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ffeaa7',
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+    color: '#856404',
+  },
+  button: {
+    backgroundColor: '#007AFF',
+    padding: 12,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  buttonText: {
+    color: 'white',
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

@@ -42,61 +42,78 @@ class NotificationService {
     }
   }
 
-  /**
-   * Register for push notifications and get token
-   */
-  static async registerForPushNotifications() {
+ // Enhanced registerForPushNotifications with more debugging
+static async registerForPushNotifications() {
     try {
-      let token;
+        console.log('🚀 STARTING PUSH NOTIFICATION REGISTRATION');
+        
+        let token;
 
-      // Check if running on physical device
-      if (!Device.isDevice) {
-        console.log('Must use physical device for Push Notifications');
-        return null;
-      }
+        // Check if running on physical device
+        if (!Device.isDevice) {
+            console.log('❌ Must use physical device for Push Notifications');
+            return null;
+        }
+        console.log('✅ Running on physical device');
 
-      // Check existing permissions
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
+        // Debug current permissions
+        await this.debugNotificationPermissions();
 
-      // Ask for permission if not granted
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
+        // Check existing permissions
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        console.log('📋 Existing permission status:', existingStatus);
+        let finalStatus = existingStatus;
 
-      if (finalStatus !== 'granted') {
-        console.log('Failed to get push token for push notification!');
-        return null;
-      }
+        // Ask for permission if not granted
+        if (existingStatus !== 'granted') {
+            console.log('🙋 Requesting notification permissions...');
+            const { status } = await Notifications.requestPermissionsAsync();
+            finalStatus = status;
+            console.log('📋 New permission status:', finalStatus);
+        }
 
-      // Get the token
-      const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-      
-      if (!projectId) {
-        console.error('Project ID not found');
-        return null;
-      }
+        if (finalStatus !== 'granted') {
+            console.log('❌ Failed to get push token for push notification!');
+            console.log('💡 User needs to enable notifications in iOS Settings');
+            return null;
+        }
 
-      token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-      console.log('Push token obtained:', token);
+        // Get the token
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+        console.log('🆔 Project ID:', projectId);
+        
+        if (!projectId) {
+            console.error('❌ Project ID not found');
+            return null;
+        }
 
-      // Configure notification channel for Android
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
-        });
-      }
+        console.log('🎫 Getting Expo push token...');
+        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+        token = tokenData.data;
+        console.log('✅ Push token obtained:', token);
 
-      return token;
+        // Configure notification channel for Android
+        if (Platform.OS === 'android') {
+            console.log('🤖 Configuring Android notification channel...');
+            await Notifications.setNotificationChannelAsync('default', {
+                name: 'default',
+                importance: Notifications.AndroidImportance.MAX,
+                vibrationPattern: [0, 250, 250, 250],
+                lightColor: '#FF231F7C',
+            });
+            console.log('✅ Android notification channel configured');
+        }
+
+        // Debug permissions after setup
+        console.log('🔍 Final permission check:');
+        await this.debugNotificationPermissions();
+
+        return token;
     } catch (error) {
-      console.error('Error getting push token:', error);
-      return null;
+        console.error('❌ Error getting push token:', error);
+        return null;
     }
-  }
+}
 
   /**
    * Send push token to backend
@@ -140,31 +157,74 @@ class NotificationService {
     }
   }
 
-  /**
-   * Set up notification listeners
-   */
-  static setupNotificationListeners(onNotificationReceived, onNotificationTapped) {
+static setupNotificationListeners(onNotificationReceived, onNotificationTapped) {
+    console.log('🎧 Setting up notification listeners...');
+    
     // Listener for notifications received while app is foregrounded
     this.notificationListener = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification);
-      
-      // Update badge count immediately
-      this.updateBadgeFromNotification(notification);
-      
-      if (onNotificationReceived) {
-        onNotificationReceived(notification);
-      }
+        console.log('📨 NOTIFICATION RECEIVED (FOREGROUND):');
+        console.log('📱 Full notification object:', JSON.stringify(notification, null, 2));
+        console.log('📄 Title:', notification.request.content.title);
+        console.log('📝 Body:', notification.request.content.body);
+        console.log('🔢 Badge:', notification.request.content.badge);
+        console.log('🔊 Sound:', notification.request.content.sound);
+        console.log('📦 Data:', notification.request.content.data);
+        
+        // Update badge count immediately
+        this.updateBadgeFromNotification(notification);
+        
+        if (onNotificationReceived) {
+            onNotificationReceived(notification);
+        }
     });
 
     // Listener for when user taps on notification
     this.responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notification tapped:', response);
-      
-      if (onNotificationTapped) {
-        onNotificationTapped(response);
-      }
+        console.log('👆 NOTIFICATION TAPPED:');
+        console.log('📱 Full response object:', JSON.stringify(response, null, 2));
+        console.log('🎯 Action identifier:', response.actionIdentifier);
+        console.log('📦 User input:', response.userText);
+        
+        if (onNotificationTapped) {
+            onNotificationTapped(response);
+        }
     });
-  }
+    
+    console.log('✅ Notification listeners set up successfully');
+}
+
+// Also add this method to check notification permissions in detail:
+static async debugNotificationPermissions() {
+    try {
+        console.log('🔍 DEBUGGING NOTIFICATION PERMISSIONS:');
+        
+        // Check current permissions
+        const permissions = await Notifications.getPermissionsAsync();
+        console.log('📋 Current permissions:', JSON.stringify(permissions, null, 2));
+        
+        // Check if device supports notifications
+        const deviceSupport = Device.isDevice;
+        console.log('📱 Is physical device:', deviceSupport);
+        
+        // Check notification settings
+        const settings = await Notifications.getNotificationSettingsAsync();
+        console.log('⚙️ Notification settings:', JSON.stringify(settings, null, 2));
+        
+        // Get current badge count
+        const badgeCount = await Notifications.getBadgeCountAsync();
+        console.log('🔢 Current badge count:', badgeCount);
+        
+        return {
+            permissions,
+            deviceSupport,
+            settings,
+            badgeCount
+        };
+    } catch (error) {
+        console.error('❌ Error debugging permissions:', error);
+        return null;
+    }
+}
 
   /**
    * Update badge count from notification data
