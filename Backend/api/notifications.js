@@ -535,6 +535,105 @@ router.post("/debug-increment-posts/:userId", verifyToken, async (req, res, next
         next(error);
     }
 });
+
+// Add this debugging route to your backend/api/notifications.js
+// This will help us see what push tokens are registered and for which users
+
+router.get("/debug-tokens", verifyToken, async (req, res, next) => {
+    try {
+        const userId = req.userId;
+        console.log(`🔍 DEBUG: Checking push tokens for requesting user ${userId}`);
+
+        // Get all push tokens in the system
+        const allTokens = await prisma.pushToken.findMany({
+            include: {
+                user: {
+                    select: { id: true, firstName: true, lastName: true, username: true }
+                }
+            },
+            orderBy: { userId: 'asc' }
+        });
+
+        console.log('📱 ALL PUSH TOKENS IN SYSTEM:');
+        allTokens.forEach(token => {
+            console.log(`   User: ${token.user.id} (${token.user.firstName}) - Token: ${token.token.substring(0, 30)}... - Active: ${token.isActive}`);
+        });
+
+        // Check for duplicate tokens
+        const tokenMap = new Map();
+        allTokens.forEach(token => {
+            if (tokenMap.has(token.token)) {
+                console.log(`⚠️ DUPLICATE TOKEN FOUND: ${token.token.substring(0, 30)}... used by users ${tokenMap.get(token.token)} and ${token.user.id}`);
+            } else {
+                tokenMap.set(token.token, token.user.id);
+            }
+        });
+
+        // Get current user's tokens specifically
+        const userTokens = allTokens.filter(token => token.userId === userId);
+        console.log(`👤 CURRENT USER (${userId}) TOKENS:`, userTokens.length);
+
+        res.json({
+            requestingUserId: userId,
+            totalTokens: allTokens.length,
+            currentUserTokens: userTokens.length,
+            allTokens: allTokens.map(token => ({
+                userId: token.userId,
+                userName: token.user.firstName,
+                tokenPreview: token.token.substring(0, 30) + '...',
+                isActive: token.isActive,
+                platform: token.platform
+            })),
+            duplicateTokens: Array.from(tokenMap.entries()).filter(([token, userId]) => 
+                allTokens.filter(t => t.token === token).length > 1
+            )
+        });
+
+    } catch (error) {
+        console.error('❌ Error debugging push tokens:', error);
+        next(error);
+    }
+});
+
+// Also add this simple route to check if the current user has a valid session
+router.get("/debug-user", verifyToken, async (req, res, next) => {
+    try {
+        const userId = req.userId;
+        const username = req.username;
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                username: true,
+                firstName: true,
+                lastName: true,
+                pushTokens: {
+                    where: { isActive: true },
+                    select: { id: true, token: true, platform: true }
+                }
+            }
+        });
+
+        console.log(`🔍 DEBUG USER SESSION:`, {
+            tokenUserId: userId,
+            tokenUsername: username,
+            dbUser: user
+        });
+
+        res.json({
+            tokenData: { userId, username },
+            dbUser: user,
+            hasValidSession: !!user,
+            activePushTokens: user?.pushTokens?.length || 0
+        });
+
+    } catch (error) {
+        console.error('❌ Error debugging user session:', error);
+        next(error);
+    }
+});
+
 // Export utility functions for use in other routes
 module.exports = {
     router,

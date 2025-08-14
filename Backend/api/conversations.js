@@ -340,13 +340,76 @@ router.get("/", verifyToken, async (req, res, next) => {
                 },
             });
 
+            // 🔥 DEBUG: Add debugging code here
+            console.log('🔍 DEBUG MESSAGE CREATION:');
+            console.log('📨 Message ID:', populatedMessage.id);
+            console.log('👤 Message senderId:', populatedMessage.senderId, 'type:', typeof populatedMessage.senderId);
+            console.log('👤 Request userId:', senderId, 'type:', typeof senderId);
+            console.log('👤 Sender object:', populatedMessage.sender);
+            console.log('🗨️ Conversation ID:', populatedMessage.conversationId);
+
+            // Check conversation members before calling notification service
+            const debugConversationMembers = await prisma.conversationMember.findMany({
+                where: { conversationId: parseInt(conversationId) },
+                include: {
+                    user: {
+                        select: { id: true, firstName: true, lastName: true }
+                    }
+                }
+            });
+
+            console.log('👥 ALL conversation members:');
+            debugConversationMembers.forEach(member => {
+                console.log(`   - User ${member.user.id} (${member.user.firstName}), type: ${typeof member.user.id}`);
+                console.log(`   - Is sender? ${member.user.id === populatedMessage.senderId} (strict equality)`);
+                console.log(`   - Is sender? ${member.user.id == populatedMessage.senderId} (loose equality)`);
+                console.log(`   - parseInt comparison: ${parseInt(member.user.id) === parseInt(populatedMessage.senderId)}`);
+            });
+
+            // Test the exact query that the notification service will use
+            const testExcludeQuery = await prisma.conversationMember.findMany({
+                where: {
+                    conversationId: parseInt(conversationId),
+                    userId: { not: populatedMessage.senderId }
+                },
+                include: {
+                    user: {
+                        select: { id: true, firstName: true, lastName: true }
+                    }
+                }
+            });
+
+            console.log('🚫 Members AFTER excluding sender (current method):');
+            testExcludeQuery.forEach(member => {
+                console.log(`   - User ${member.user.id} (${member.user.firstName})`);
+            });
+
+            // Test with parseInt
+            const testExcludeQueryInt = await prisma.conversationMember.findMany({
+                where: {
+                    conversationId: parseInt(conversationId),
+                    userId: { not: parseInt(populatedMessage.senderId) }
+                },
+                include: {
+                    user: {
+                        select: { id: true, firstName: true, lastName: true }
+                    }
+                }
+            });
+
+            console.log('🚫 Members AFTER excluding sender (parseInt method):');
+            testExcludeQueryInt.forEach(member => {
+                console.log(`   - User ${member.user.id} (${member.user.firstName})`);
+            });
+
+            // Now call the notification service as normal...
             // NEW: Send notifications to conversation members about the new message
             try {
-                console.log('Sending new message notifications...');
+                console.log('📞 Calling NotificationService.sendNewMessageNotification...');
                 await NotificationService.sendNewMessageNotification(populatedMessage, populatedMessage.sender);
-                console.log('New message notifications sent successfully');
+                console.log('✅ New message notifications sent successfully');
             } catch (notificationError) {
-                console.error('Error sending message notification:', notificationError);
+                console.error('❌ Error sending message notification:', notificationError);
                 // Don't fail the message creation if notifications fail
             }
 

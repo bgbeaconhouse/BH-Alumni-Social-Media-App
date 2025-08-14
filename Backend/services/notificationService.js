@@ -132,16 +132,27 @@ class NotificationService {
      * @param {Object} message - The created message object
      * @param {Object} sender - The message sender object
      */
- // Also improve the sendNewMessageNotification method:
+// Replace your sendNewMessageNotification method in backend/services/notificationService.js with this:
+
 static async sendNewMessageNotification(message, sender) {
     try {
         console.log(`📩 SENDING MESSAGE NOTIFICATION for message ${message.id} from sender ${sender.id}`);
+        console.log(`🔍 Message senderId: ${message.senderId} (type: ${typeof message.senderId})`);
+        console.log(`🔍 Sender ID: ${sender.id} (type: ${typeof sender.id})`);
         
-        // Get conversation members except the sender
+        // 🔥 CRITICAL FIX: Ensure both IDs are the same type
+        const senderIdInt = parseInt(message.senderId);
+        console.log(`🔧 Converting senderId to integer: ${senderIdInt}`);
+        
+        // Get conversation members except the sender - FIXED QUERY
         const conversationMembers = await prisma.conversationMember.findMany({
             where: {
                 conversationId: message.conversationId,
-                userId: { not: message.senderId }
+                // 🔥 FIX: Use integer comparison and add extra safety
+                AND: [
+                    { userId: { not: senderIdInt } },
+                    { userId: { not: parseInt(sender.id) } } // Double check with sender.id too
+                ]
             },
             include: {
                 user: {
@@ -157,17 +168,36 @@ static async sendNewMessageNotification(message, sender) {
 
         console.log(`👥 Found ${conversationMembers.length} conversation members (excluding sender)`);
 
+        // 🔥 ADDITIONAL SAFETY: Filter out sender on the JavaScript side too
+        const filteredMembers = conversationMembers.filter(member => {
+            const memberUserId = parseInt(member.user.id);
+            const senderUserId = parseInt(sender.id);
+            const messageSenderId = parseInt(message.senderId);
+            
+            const shouldInclude = memberUserId !== senderUserId && memberUserId !== messageSenderId;
+            
+            if (!shouldInclude) {
+                console.log(`⚠️ FILTERING OUT sender from members: User ${memberUserId}, Sender ${senderUserId}, Message Sender ${messageSenderId}`);
+            }
+            
+            return shouldInclude;
+        });
+
+        console.log(`🔒 After filtering: ${filteredMembers.length} valid recipients`);
+
         const notifications = [];
         const pushMessages = [];
 
-        for (const member of conversationMembers) {
+        for (const member of filteredMembers) {
             const user = member.user;
 
-            // Double check we're not sending to sender
-            if (user.id === message.senderId) {
-                console.log(`⚠️ Skipping notification for sender ${user.id}`);
-                continue;
+            // 🔥 TRIPLE CHECK: Make sure we're not sending to sender
+            if (parseInt(user.id) === parseInt(sender.id) || parseInt(user.id) === parseInt(message.senderId)) {
+                console.log(`❌ CRITICAL ERROR: Almost sent notification to sender! User: ${user.id}, Sender: ${sender.id}, Message Sender: ${message.senderId}`);
+                continue; // Skip this user
             }
+
+            console.log(`✅ Processing notification for user ${user.id} (${user.firstName})`);
 
             // Check notification settings
             const settings = user.notificationSettings;
@@ -184,8 +214,8 @@ static async sendNewMessageNotification(message, sender) {
             // Create notification record
             const notification = await prisma.notification.create({
                 data: {
-                    senderId: message.senderId,
-                    receiverId: user.id,
+                    senderId: parseInt(message.senderId),
+                    receiverId: parseInt(user.id),
                     title: 'New Message',
                     body: `${sender.firstName}: ${message.content ? 
                         (message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content) : 
@@ -200,7 +230,7 @@ static async sendNewMessageNotification(message, sender) {
 
             // Increment unread messages count
             await prisma.user.update({
-                where: { id: user.id },
+                where: { id: parseInt(user.id) },
                 data: {
                     unreadMessagesCount: { increment: 1 }
                 }
@@ -214,7 +244,6 @@ static async sendNewMessageNotification(message, sender) {
             // Prepare push notifications
             for (const pushToken of user.pushTokens) {
                 if (Expo.isExpoPushToken(pushToken.token)) {
-                    // 🔥 IMPROVED MESSAGE PAYLOAD
                     const pushMessage = {
                         to: pushToken.token,
                         sound: 'default',
@@ -231,12 +260,12 @@ static async sendNewMessageNotification(message, sender) {
                             timestamp: new Date().toISOString()
                         },
                         badge: badgeCount,
-                        // 🔥 CRITICAL FIELDS FOR DISPLAY
                         priority: 'high',
                         channelId: 'default',
                         _displayInForeground: true
                     };
 
+                    console.log(`📱 Adding push message for user ${user.id}`);
                     pushMessages.push(pushMessage);
                 }
             }
@@ -244,8 +273,10 @@ static async sendNewMessageNotification(message, sender) {
 
         // Send push notifications
         if (pushMessages.length > 0) {
+            console.log(`📨 Sending ${pushMessages.length} push notifications`);
             await this.sendPushNotifications(pushMessages, notifications);
-            console.log(`📨 Sent ${pushMessages.length} push notifications`);
+        } else {
+            console.log(`⚠️ No push messages to send - all recipients filtered out or no valid tokens`);
         }
 
         console.log(`✅ Sent ${notifications.length} new message notifications for message ${message.id}`);
