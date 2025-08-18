@@ -435,6 +435,15 @@ const Messaging = () => {
         </View>
       </View>
 
+      {/* DEBUG BUTTON - Remove this in production */}
+      <TouchableOpacity 
+        style={styles.debugButton} 
+        onPress={resetUnreadCounts}
+      >
+        <Text style={styles.debugButtonText}>
+          🔄 Reset Unread Counts (DEBUG)
+        </Text>
+      </TouchableOpacity>
 
       {conversations.length === 0 ? (
         <View style={styles.emptyContainer}>
