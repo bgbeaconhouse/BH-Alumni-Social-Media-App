@@ -11,211 +11,250 @@ class NotificationService {
      * @param {Object} post - The created post object
      * @param {Object} author - The post author object
      */
-    static async sendNewPostNotification(post, author) {
-        try {
-            // Get all users except the post author
-            const users = await prisma.user.findMany({
-                where: {
-                    id: { not: post.authorId },
-                    approved: true // Only send to approved users
-                },
-                include: {
-                    notificationSettings: true,
-                    pushTokens: {
-                        where: { isActive: true }
-                    }
+  static async sendNewPostNotification(post, author) {
+    try {
+        console.log('🆕 SENDING NEW POST NOTIFICATION for post:', post.id);
+        
+        // Get all users except the post author
+        const users = await prisma.user.findMany({
+            where: {
+                id: { not: post.authorId },
+                approved: true // Only send to approved users
+            },
+            include: {
+                notificationSettings: true,
+                pushTokens: {
+                    where: { isActive: true }
+                }
+            }
+        });
+
+        console.log(`👥 Found ${users.length} users to notify`);
+
+        const notifications = [];
+        const pushMessages = [];
+
+        for (const user of users) {
+            // Check if user has post notifications enabled
+            const settings = user.notificationSettings;
+            if (settings && !settings.enablePostNotifications) {
+                console.log(`⏭️ Skipping user ${user.id} - post notifications disabled`);
+                continue;
+            }
+
+            // Check quiet hours
+            if (this.isQuietHours(settings)) {
+                console.log(`🤫 Skipping user ${user.id} - in quiet hours`);
+                continue;
+            }
+
+            // Create notification record in database
+            const notification = await prisma.notification.create({
+                data: {
+                    senderId: post.authorId,
+                    receiverId: user.id,
+                    title: 'New Post',
+                    body: `${author.firstName} ${author.lastName} shared a new post`,
+                    type: 'NEW_POST',
+                    postId: post.id
                 }
             });
 
-            const notifications = [];
-            const pushMessages = [];
+            notifications.push(notification);
 
-            for (const user of users) {
-                // Check if user has post notifications enabled
-                const settings = user.notificationSettings;
-                if (settings && !settings.enablePostNotifications) {
-                    continue; // Skip if post notifications are disabled
+            // Increment unread posts count
+            await prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    unreadPostsCount: { increment: 1 }
                 }
+            });
 
-                // Check quiet hours
-                if (this.isQuietHours(settings)) {
-                    continue; // Skip if in quiet hours
-                }
+            console.log(`📊 Updated unread count for user ${user.id}`);
 
-                // Create notification record in database
-                const notification = await prisma.notification.create({
-                    data: {
-                        senderId: post.authorId,
-                        receiverId: user.id,
+            // Calculate badge count
+            const badgeCount = await this.calculateTotalBadgeCount(user.id);
+            console.log(`🔢 Badge count for user ${user.id}: ${badgeCount}`);
+
+            // Prepare push notifications for each device token
+            for (const pushToken of user.pushTokens) {
+                if (Expo.isExpoPushToken(pushToken.token)) {
+                    // 🔥 IMPROVED PAYLOAD FORMAT
+                    const pushMessage = {
+                        to: pushToken.token,
+                        sound: 'default',
                         title: 'New Post',
-                        body: `${author.firstName} ${author.lastName} shared a new post`,
-                        type: 'NEW_POST',
-                        postId: post.id
-                    }
-                });
+                        body: `${author.firstName} shared a new post`,
+                        data: {
+                            type: 'NEW_POST',
+                            postId: post.id,
+                            notificationId: notification.id,
+                            // Add these for better handling
+                            screen: 'post',
+                            timestamp: new Date().toISOString()
+                        },
+                        badge: badgeCount,
+                        // 🔥 ADD THESE CRITICAL FIELDS
+                        priority: 'high',
+                        channelId: 'default', // For Android
+                        // Ensure notification shows even if app is foreground
+                        _displayInForeground: true
+                    };
 
-                notifications.push(notification);
-
-                // Increment unread posts count
-                await prisma.user.update({
-                    where: { id: user.id },
-                    data: {
-                        unreadPostsCount: { increment: 1 }
-                    }
-                });
-
-                // Prepare push notifications for each device token
-                for (const pushToken of user.pushTokens) {
-                    if (Expo.isExpoPushToken(pushToken.token)) {
-                        pushMessages.push({
-                            to: pushToken.token,
-                            sound: 'default',
-                            title: 'New Post',
-                            body: `${author.firstName} shared a new post`,
-                            data: {
-                                type: 'NEW_POST',
-                                postId: post.id,
-                                notificationId: notification.id
-                            },
-                            badge: await this.calculateTotalBadgeCount(user.id)
-                        });
-                    }
+                    console.log(`📱 Adding push message for user ${user.id}, token: ${pushToken.token.substring(0, 20)}...`);
+                    pushMessages.push(pushMessage);
+                } else {
+                    console.log(`❌ Invalid push token for user ${user.id}: ${pushToken.token}`);
                 }
             }
-
-            // Send push notifications in batches
-            if (pushMessages.length > 0) {
-                await this.sendPushNotifications(pushMessages, notifications);
-            }
-
-            console.log(`Sent ${notifications.length} new post notifications for post ${post.id}`);
-            return notifications;
-
-        } catch (error) {
-            console.error('Error sending new post notification:', error);
-            throw error;
         }
+
+        console.log(`📨 Prepared ${pushMessages.length} push messages`);
+
+        // Send push notifications in batches
+        if (pushMessages.length > 0) {
+            await this.sendPushNotifications(pushMessages, notifications);
+        } else {
+            console.log('⚠️ No push messages to send');
+        }
+
+        console.log(`✅ Sent ${notifications.length} new post notifications for post ${post.id}`);
+        return notifications;
+
+    } catch (error) {
+        console.error('❌ Error sending new post notification:', error);
+        throw error;
     }
+}
 
     /**
      * Send notification when a new message is sent
      * @param {Object} message - The created message object
      * @param {Object} sender - The message sender object
      */
-    static async sendNewMessageNotification(message, sender) {
-        try {
-            console.log(`Sending message notification for message ${message.id} from sender ${sender.id}`);
-            
-            // Get conversation members except the sender
-            const conversationMembers = await prisma.conversationMember.findMany({
-                where: {
-                    conversationId: message.conversationId,
-                    userId: { not: message.senderId } // CRITICAL: Exclude the sender
-                },
-                include: {
-                    user: {
-                        include: {
-                            notificationSettings: true,
-                            pushTokens: {
-                                where: { isActive: true }
-                            }
+static async sendNewMessageNotification(message, sender) {
+    try {
+        console.log(`📩 SENDING MESSAGE NOTIFICATION for message ${message.id} from sender ${sender.id}`);
+        
+        // Get conversation members except the sender
+        const conversationMembers = await prisma.conversationMember.findMany({
+            where: {
+                conversationId: message.conversationId,
+                userId: { not: message.senderId }
+            },
+            include: {
+                user: {
+                    include: {
+                        notificationSettings: true,
+                        pushTokens: {
+                            where: { isActive: true }
                         }
                     }
                 }
+            }
+        });
+
+        console.log(`👥 Found ${conversationMembers.length} conversation members (excluding sender)`);
+
+        const notifications = [];
+        const pushMessages = [];
+
+        for (const member of conversationMembers) {
+            const user = member.user;
+
+            // Double check we're not sending to sender
+            if (user.id === message.senderId) {
+                console.log(`⚠️ Skipping notification for sender ${user.id}`);
+                continue;
+            }
+
+            // Check notification settings
+            const settings = user.notificationSettings;
+            if (settings && !settings.enableMessageNotifications) {
+                console.log(`⏭️ Message notifications disabled for user ${user.id}`);
+                continue;
+            }
+
+            if (this.isQuietHours(settings)) {
+                console.log(`🤫 User ${user.id} is in quiet hours`);
+                continue;
+            }
+
+            // Create notification record
+            const notification = await prisma.notification.create({
+                data: {
+                    senderId: message.senderId,
+                    receiverId: user.id,
+                    title: 'New Message',
+                    body: `${sender.firstName}: ${message.content ? 
+                        (message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content) : 
+                        'Sent an attachment'}`,
+                    type: 'NEW_MESSAGE',
+                    messageId: message.id,
+                    conversationId: message.conversationId
+                }
             });
 
-            console.log(`Found ${conversationMembers.length} conversation members (excluding sender)`);
+            notifications.push(notification);
 
-            const notifications = [];
-            const pushMessages = [];
-
-            for (const member of conversationMembers) {
-                const user = member.user;
-
-                console.log(`Processing notification for user ${user.id} (${user.firstName})`);
-
-                // DOUBLE CHECK: Make sure we're not sending to the sender
-                if (user.id === message.senderId) {
-                    console.log(`Skipping notification for sender ${user.id}`);
-                    continue;
+            // Increment unread messages count
+            await prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    unreadMessagesCount: { increment: 1 }
                 }
+            });
 
-                // Check if user has message notifications enabled
-                const settings = user.notificationSettings;
-                if (settings && !settings.enableMessageNotifications) {
-                    console.log(`Message notifications disabled for user ${user.id}`);
-                    continue;
-                }
+            console.log(`📊 Updated unread count for user ${user.id}`);
 
-                // Check quiet hours
-                if (this.isQuietHours(settings)) {
-                    console.log(`User ${user.id} is in quiet hours`);
-                    continue;
-                }
+            // Calculate badge count
+            const badgeCount = await this.calculateTotalBadgeCount(user.id);
 
-                // Create notification record
-                const notification = await prisma.notification.create({
-                    data: {
-                        senderId: message.senderId,
-                        receiverId: user.id,
+            // Prepare push notifications
+            for (const pushToken of user.pushTokens) {
+                if (Expo.isExpoPushToken(pushToken.token)) {
+                    // 🔥 IMPROVED MESSAGE PAYLOAD
+                    const pushMessage = {
+                        to: pushToken.token,
+                        sound: 'default',
                         title: 'New Message',
                         body: `${sender.firstName}: ${message.content ? 
                             (message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content) : 
                             'Sent an attachment'}`,
-                        type: 'NEW_MESSAGE',
-                        messageId: message.id,
-                        conversationId: message.conversationId
-                    }
-                });
+                        data: {
+                            type: 'NEW_MESSAGE',
+                            messageId: message.id,
+                            conversationId: message.conversationId,
+                            notificationId: notification.id,
+                            screen: 'seeMessages',
+                            timestamp: new Date().toISOString()
+                        },
+                        badge: badgeCount,
+                        // 🔥 CRITICAL FIELDS FOR DISPLAY
+                        priority: 'high',
+                        channelId: 'default',
+                        _displayInForeground: true
+                    };
 
-                notifications.push(notification);
-
-                // Increment unread messages count
-                await prisma.user.update({
-                    where: { id: user.id },
-                    data: {
-                        unreadMessagesCount: { increment: 1 }
-                    }
-                });
-
-                console.log(`Updated unread count for user ${user.id}`);
-
-                // Prepare push notifications
-                for (const pushToken of user.pushTokens) {
-                    if (Expo.isExpoPushToken(pushToken.token)) {
-                        pushMessages.push({
-                            to: pushToken.token,
-                            sound: 'default',
-                            title: 'New Message',
-                            body: `${sender.firstName}: ${message.content ? 
-                                (message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content) : 
-                                'Sent an attachment'}`,
-                            data: {
-                                type: 'NEW_MESSAGE',
-                                messageId: message.id,
-                                conversationId: message.conversationId,
-                                notificationId: notification.id
-                            },
-                            badge: await this.calculateTotalBadgeCount(user.id)
-                        });
-                    }
+                    pushMessages.push(pushMessage);
                 }
             }
-
-            // Send push notifications
-            if (pushMessages.length > 0) {
-                await this.sendPushNotifications(pushMessages, notifications);
-                console.log(`Sent ${pushMessages.length} push notifications`);
-            }
-
-            console.log(`Sent ${notifications.length} new message notifications for message ${message.id}`);
-            return notifications;
-
-        } catch (error) {
-            console.error('Error sending new message notification:', error);
-            throw error;
         }
+
+        // Send push notifications
+        if (pushMessages.length > 0) {
+            await this.sendPushNotifications(pushMessages, notifications);
+            console.log(`📨 Sent ${pushMessages.length} push notifications`);
+        }
+
+        console.log(`✅ Sent ${notifications.length} new message notifications for message ${message.id}`);
+        return notifications;
+
+    } catch (error) {
+        console.error('❌ Error sending new message notification:', error);
+        throw error;
     }
+}
 
     /**
      * Send notification when someone comments on a post
@@ -442,48 +481,75 @@ class NotificationService {
      * @param {Array} messages - Array of push notification messages
      * @param {Array} notifications - Array of notification records
      */
-    static async sendPushNotifications(messages, notifications) {
-        try {
-            const chunks = expo.chunkPushNotifications(messages);
-            const tickets = [];
+   static async sendPushNotifications(messages, notifications) {
+    try {
+        // 🔥 DEBUG: Log the exact payload being sent
+        console.log('🚀 DEBUGGING PUSH NOTIFICATION PAYLOAD:');
+        console.log('📱 Number of messages to send:', messages.length);
+        
+        messages.forEach((message, index) => {
+            console.log(`📨 Message ${index + 1}:`, JSON.stringify(message, null, 2));
+        });
 
-            // Send notifications in chunks
-            for (const chunk of chunks) {
-                try {
-                    const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-                    tickets.push(...ticketChunk);
-                } catch (error) {
-                    console.error('Error sending push notification chunk:', error);
-                }
+        const chunks = expo.chunkPushNotifications(messages);
+        const tickets = [];
+
+        // Send notifications in chunks
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            console.log(`📦 Sending chunk ${i + 1}/${chunks.length} with ${chunk.length} notifications`);
+            
+            try {
+                const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+                tickets.push(...ticketChunk);
+                
+                // 🔥 DEBUG: Log the response from Expo
+                console.log(`✅ Chunk ${i + 1} response:`, JSON.stringify(ticketChunk, null, 2));
+            } catch (error) {
+                console.error(`❌ Error sending chunk ${i + 1}:`, error);
             }
-
-            // Update notification records with push status
-            for (let i = 0; i < notifications.length && i < tickets.length; i++) {
-                const ticket = tickets[i];
-                const notification = notifications[i];
-
-                try {
-                    await prisma.notification.update({
-                        where: { id: notification.id },
-                        data: {
-                            pushSent: ticket.status === 'ok',
-                            pushSentAt: new Date(),
-                            pushError: ticket.status === 'error' ? ticket.message : null
-                        }
-                    });
-                } catch (error) {
-                    console.error('Error updating notification push status:', error);
-                }
-            }
-
-            console.log(`Sent ${tickets.length} push notifications`);
-            return tickets;
-
-        } catch (error) {
-            console.error('Error in sendPushNotifications:', error);
-            throw error;
         }
+
+        // 🔥 DEBUG: Detailed ticket analysis
+        console.log('🎫 TICKET ANALYSIS:');
+        tickets.forEach((ticket, index) => {
+            if (ticket.status === 'error') {
+                console.log(`❌ Ticket ${index + 1} ERROR:`, ticket.message, ticket.details);
+            } else {
+                console.log(`✅ Ticket ${index + 1} SUCCESS:`, ticket.id);
+            }
+        });
+
+        // Update notification records with push status
+        for (let i = 0; i < notifications.length && i < tickets.length; i++) {
+            const ticket = tickets[i];
+            const notification = notifications[i];
+
+            try {
+                await prisma.notification.update({
+                    where: { id: notification.id },
+                    data: {
+                        pushSent: ticket.status === 'ok',
+                        pushSentAt: new Date(),
+                        pushError: ticket.status === 'error' ? `${ticket.message}: ${JSON.stringify(ticket.details)}` : null
+                    }
+                });
+            } catch (error) {
+                console.error('Error updating notification push status:', error);
+            }
+        }
+
+        console.log(`📊 SUMMARY: Sent ${tickets.length} push notifications`);
+        console.log(`✅ Successful: ${tickets.filter(t => t.status === 'ok').length}`);
+        console.log(`❌ Failed: ${tickets.filter(t => t.status === 'error').length}`);
+        
+        return tickets;
+
+    } catch (error) {
+        console.error('❌ CRITICAL ERROR in sendPushNotifications:', error);
+        throw error;
     }
+}
 }
 
 module.exports = NotificationService;
