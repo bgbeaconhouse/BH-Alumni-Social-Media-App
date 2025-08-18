@@ -1,7 +1,7 @@
 // frontend/app/home.jsx
 import { StyleSheet, Text, View, TouchableOpacity, Alert, StatusBar, Platform } from 'react-native';
 import React, { useEffect } from 'react';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useNotifications } from '../hooks/useNotifications';
 import { useAuth } from '../hooks/useAuth';
 
@@ -111,34 +111,38 @@ const Home = () => {
 
         {/* Menu Options */}
         <View style={styles.menuSection}>
-          <TouchableOpacity style={[styles.menuButton, styles.primaryButton]}>
-            <Link href="/post" style={styles.primaryMenuLink}>
-              <View style={styles.menuItemContainer}>
-                <Text style={styles.primaryMenuText}>Posts</Text>
-                {unreadCounts.unreadPostsCount > 0 && (
-                  <View style={styles.menuBadge}>
-                    <Text style={styles.menuBadgeText}>
-                      {unreadCounts.unreadPostsCount > 99 ? '99+' : unreadCounts.unreadPostsCount}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </Link>
+          {/* Posts Button */}
+          <TouchableOpacity 
+            style={[styles.menuButton, styles.primaryButton]}
+            onPress={() => router.push('/post')}
+          >
+            <View style={styles.menuItemContainer}>
+              <Text style={styles.primaryMenuText}>Posts</Text>
+              {unreadCounts.unreadPostsCount > 0 && (
+                <View style={styles.menuBadge}>
+                  <Text style={styles.menuBadgeText}>
+                    {unreadCounts.unreadPostsCount > 99 ? '99+' : unreadCounts.unreadPostsCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuButton}>
-            <Link href="/messaging" style={styles.menuLink}>
-              <View style={styles.menuItemContainer}>
-                <Text style={styles.menuText}>Messages</Text>
-                {unreadCounts.unreadMessagesCount > 0 && (
-                  <View style={[styles.menuBadge, styles.secondaryMenuBadge]}>
-                    <Text style={styles.secondaryMenuBadgeText}>
-                      {unreadCounts.unreadMessagesCount > 99 ? '99+' : unreadCounts.unreadMessagesCount}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </Link>
+          {/* Messages Button */}
+          <TouchableOpacity 
+            style={styles.menuButton}
+            onPress={() => router.push('/messaging')}
+          >
+            <View style={styles.menuItemContainer}>
+              <Text style={styles.menuText}>Messages</Text>
+              {unreadCounts.unreadMessagesCount > 0 && (
+                <View style={[styles.menuBadge, styles.secondaryMenuBadge]}>
+                  <Text style={styles.secondaryMenuBadgeText}>
+                    {unreadCounts.unreadMessagesCount > 99 ? '99+' : unreadCounts.unreadMessagesCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -248,20 +252,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 20,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#ecf0f1',
   },
   primaryButton: {
     backgroundColor: '#2c3e50',
     borderColor: '#2c3e50',
-  },
-  menuLink: {
-    width: '100%',
-    alignItems: 'center',
-  },
-  primaryMenuLink: {
-    width: '100%',
-    alignItems: 'center',
   },
   menuItemContainer: {
     flexDirection: 'row',

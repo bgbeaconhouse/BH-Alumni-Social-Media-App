@@ -43,13 +43,12 @@ class NotificationService {
   }
 
   /**
-   * Register for push notifications and get token
+   * Register for push notifications and get token - ENHANCED VERSION
    */
   static async registerForPushNotifications() {
     try {
       let token;
 
-      // Check if running on physical device
       if (!Device.isDevice) {
         console.log('Must use physical device for Push Notifications');
         return null;
@@ -61,7 +60,18 @@ class NotificationService {
 
       // Ask for permission if not granted
       if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
+        const { status } = await Notifications.requestPermissionsAsync({
+          ios: {
+            allowAlert: true,
+            allowBadge: true,
+            allowSound: true,
+            allowDisplayInCarPlay: true,
+            allowCriticalAlerts: false,
+            provideAppNotificationSettings: true,
+            allowProvisional: false,
+            allowAnnouncements: true,
+          },
+        });
         finalStatus = status;
       }
 
@@ -79,7 +89,6 @@ class NotificationService {
       }
 
       token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-      console.log('Push token obtained:', token);
 
       // Configure notification channel for Android
       if (Platform.OS === 'android') {
@@ -88,6 +97,9 @@ class NotificationService {
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
           lightColor: '#FF231F7C',
+          enableLights: true,
+          enableVibrate: true,
+          showBadge: true,
         });
       }
 
@@ -96,6 +108,28 @@ class NotificationService {
       console.error('Error getting push token:', error);
       return null;
     }
+  }
+
+  /**
+   * Set up notification listeners - ENHANCED VERSION
+   */
+  static setupNotificationListeners(onNotificationReceived, onNotificationTapped) {
+    // Listener for notifications received while app is foregrounded
+    this.notificationListener = Notifications.addNotificationReceivedListener(notification => {
+      // Update badge count immediately
+      this.updateBadgeFromNotification(notification);
+      
+      if (onNotificationReceived) {
+        onNotificationReceived(notification);
+      }
+    });
+
+    // Listener for when user taps on notification
+    this.responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      if (onNotificationTapped) {
+        onNotificationTapped(response);
+      }
+    });
   }
 
   /**
@@ -127,7 +161,6 @@ class NotificationService {
       });
 
       if (response.ok) {
-        console.log('Push token registered with backend successfully');
         return true;
       } else {
         const errorData = await response.json();
@@ -138,32 +171,6 @@ class NotificationService {
       console.error('Error sending token to backend:', error);
       return false;
     }
-  }
-
-  /**
-   * Set up notification listeners
-   */
-  static setupNotificationListeners(onNotificationReceived, onNotificationTapped) {
-    // Listener for notifications received while app is foregrounded
-    this.notificationListener = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification);
-      
-      // Update badge count immediately
-      this.updateBadgeFromNotification(notification);
-      
-      if (onNotificationReceived) {
-        onNotificationReceived(notification);
-      }
-    });
-
-    // Listener for when user taps on notification
-    this.responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notification tapped:', response);
-      
-      if (onNotificationTapped) {
-        onNotificationTapped(response);
-      }
-    });
   }
 
   /**
@@ -224,7 +231,6 @@ class NotificationService {
       const totalBadge = counts.unreadPostsCount + counts.unreadMessagesCount;
       
       await Notifications.setBadgeCountAsync(totalBadge);
-      console.log('Badge count updated:', totalBadge);
       
       return totalBadge;
     } catch (error) {
@@ -252,7 +258,6 @@ class NotificationService {
       });
 
       if (response.ok) {
-        console.log('Posts marked as read');
         // Update badge count after marking as read
         await this.updateBadgeCount();
         return true;
@@ -267,21 +272,17 @@ class NotificationService {
   }
 
   /**
-   * Mark conversation as read - WITH DEBUG LOGGING
+   * Mark conversation as read
    */
   static async markConversationAsRead(conversationId) {
     try {
-      console.log('🌐 NotificationService.markConversationAsRead called with:', conversationId);
-      
       const authToken = await SecureStore.getItemAsync('authToken');
       
       if (!authToken) {
-        console.log('❌ No auth token found');
         return false;
       }
 
       const url = `https://bh-alumni-social-media-app.onrender.com/api/notifications/mark-conversation-read/${conversationId}`;
-      console.log('🌐 Making API call to:', url);
 
       const response = await fetch(url, {
         method: 'POST',
@@ -290,24 +291,16 @@ class NotificationService {
         },
       });
 
-      console.log('🌐 API Response status:', response.status);
-      console.log('🌐 API Response ok:', response.ok);
-
       if (response.ok) {
-        const data = await response.json();
-        console.log('🌐 API Response data:', data);
-        console.log(`✅ Conversation ${conversationId} marked as read successfully`);
         // Update badge count after marking as read
         await this.updateBadgeCount();
         return true;
       } else {
-        const errorData = await response.text();
-        console.error('❌ Failed to mark conversation as read. Status:', response.status);
-        console.error('❌ Error response:', errorData);
+        console.error('Failed to mark conversation as read. Status:', response.status);
         return false;
       }
     } catch (error) {
-      console.error('❌ Error marking conversation as read:', error);
+      console.error('Error marking conversation as read:', error);
       return false;
     }
   }
@@ -363,7 +356,6 @@ class NotificationService {
       });
 
       if (response.ok) {
-        console.log('Notification settings updated');
         return await response.json();
       } else {
         console.error('Failed to update notification settings');

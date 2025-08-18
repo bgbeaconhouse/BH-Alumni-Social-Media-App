@@ -205,31 +205,6 @@ const Messaging = () => {
     }
   }, [getUserId, refreshUnreadCounts]);
 
-  // DEBUG: Reset unread counts function
-  const resetUnreadCounts = async () => {
-    try {
-      const token = await getToken();
-      console.log('🔄 Resetting unread counts...');
-      
-      const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/notifications/reset-unread-counts', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      const result = await response.json();
-      console.log('✅ Reset response:', result);
-      
-      // Refresh the page data
-      fetchConversations();
-      refreshUnreadCounts();
-      
-      Alert.alert('Debug', 'Unread counts reset successfully!');
-    } catch (error) {
-      console.error('❌ Error resetting unread counts:', error);
-      Alert.alert('Error', 'Failed to reset unread counts');
-    }
-  };
-
   // Enhanced useEffect with proper auth handling - FIXED DEPENDENCIES
   useEffect(() => {
     let isMounted = true;
@@ -435,16 +410,6 @@ const Messaging = () => {
         </View>
       </View>
 
-      {/* DEBUG BUTTON - Remove this in production */}
-      <TouchableOpacity 
-        style={styles.debugButton} 
-        onPress={resetUnreadCounts}
-      >
-        <Text style={styles.debugButtonText}>
-          🔄 Reset Unread Counts (DEBUG)
-        </Text>
-      </TouchableOpacity>
-
       {conversations.length === 0 ? (
         <View style={styles.emptyContainer}>
           <View style={styles.emptyContent}>
@@ -537,19 +502,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
-  },
-  // DEBUG BUTTON STYLES - Remove in production
-  debugButton: {
-    backgroundColor: '#e74c3c',
-    padding: 15,
-    margin: 20,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  debugButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,

@@ -77,7 +77,10 @@ class NotificationService {
                                 postId: post.id,
                                 notificationId: notification.id
                             },
-                            badge: await this.calculateTotalBadgeCount(user.id)
+                            badge: await this.calculateTotalBadgeCount(user.id),
+                            priority: 'high',
+                            channelId: 'default',
+                            _displayInForeground: true
                         });
                     }
                 }
@@ -88,7 +91,6 @@ class NotificationService {
                 await this.sendPushNotifications(pushMessages, notifications);
             }
 
-            console.log(`Sent ${notifications.length} new post notifications for post ${post.id}`);
             return notifications;
 
         } catch (error) {
@@ -104,13 +106,13 @@ class NotificationService {
      */
     static async sendNewMessageNotification(message, sender) {
         try {
-            console.log(`Sending message notification for message ${message.id} from sender ${sender.id}`);
-            
             // Get conversation members except the sender
             const conversationMembers = await prisma.conversationMember.findMany({
                 where: {
                     conversationId: message.conversationId,
-                    userId: { not: message.senderId } // CRITICAL: Exclude the sender
+                    userId: { 
+                        not: parseInt(message.senderId) // CRITICAL: Exclude the sender with proper type conversion
+                    }
                 },
                 include: {
                     user: {
@@ -124,32 +126,25 @@ class NotificationService {
                 }
             });
 
-            console.log(`Found ${conversationMembers.length} conversation members (excluding sender)`);
-
             const notifications = [];
             const pushMessages = [];
 
             for (const member of conversationMembers) {
                 const user = member.user;
 
-                console.log(`Processing notification for user ${user.id} (${user.firstName})`);
-
                 // DOUBLE CHECK: Make sure we're not sending to the sender
-                if (user.id === message.senderId) {
-                    console.log(`Skipping notification for sender ${user.id}`);
+                if (parseInt(user.id) === parseInt(message.senderId)) {
                     continue;
                 }
 
                 // Check if user has message notifications enabled
                 const settings = user.notificationSettings;
                 if (settings && !settings.enableMessageNotifications) {
-                    console.log(`Message notifications disabled for user ${user.id}`);
                     continue;
                 }
 
                 // Check quiet hours
                 if (this.isQuietHours(settings)) {
-                    console.log(`User ${user.id} is in quiet hours`);
                     continue;
                 }
 
@@ -178,8 +173,6 @@ class NotificationService {
                     }
                 });
 
-                console.log(`Updated unread count for user ${user.id}`);
-
                 // Prepare push notifications
                 for (const pushToken of user.pushTokens) {
                     if (Expo.isExpoPushToken(pushToken.token)) {
@@ -196,7 +189,10 @@ class NotificationService {
                                 conversationId: message.conversationId,
                                 notificationId: notification.id
                             },
-                            badge: await this.calculateTotalBadgeCount(user.id)
+                            badge: await this.calculateTotalBadgeCount(user.id),
+                            priority: 'high',
+                            channelId: 'default',
+                            _displayInForeground: true
                         });
                     }
                 }
@@ -205,10 +201,8 @@ class NotificationService {
             // Send push notifications
             if (pushMessages.length > 0) {
                 await this.sendPushNotifications(pushMessages, notifications);
-                console.log(`Sent ${pushMessages.length} push notifications`);
             }
 
-            console.log(`Sent ${notifications.length} new message notifications for message ${message.id}`);
             return notifications;
 
         } catch (error) {
@@ -279,7 +273,10 @@ class NotificationService {
                             postId: post.id,
                             notificationId: notification.id
                         },
-                        badge: await this.calculateTotalBadgeCount(postAuthor.id)
+                        badge: await this.calculateTotalBadgeCount(postAuthor.id),
+                        priority: 'high',
+                        channelId: 'default',
+                        _displayInForeground: true
                     });
                 }
             }
@@ -288,7 +285,6 @@ class NotificationService {
                 await this.sendPushNotifications(pushMessages, [notification]);
             }
 
-            console.log(`Sent comment notification to post author ${post.authorId}`);
             return notification;
 
         } catch (error) {
@@ -359,7 +355,10 @@ class NotificationService {
                             postId: post.id,
                             notificationId: notification.id
                         },
-                        badge: await this.calculateTotalBadgeCount(postAuthor.id)
+                        badge: await this.calculateTotalBadgeCount(postAuthor.id),
+                        priority: 'high',
+                        channelId: 'default',
+                        _displayInForeground: true
                     });
                 }
             }
@@ -368,7 +367,6 @@ class NotificationService {
                 await this.sendPushNotifications(pushMessages, [notification]);
             }
 
-            console.log(`Sent like notification to post author ${post.authorId}`);
             return notification;
 
         } catch (error) {
@@ -438,7 +436,7 @@ class NotificationService {
     }
 
     /**
-     * Send push notifications in batches
+     * Send push notifications in batches - ENHANCED VERSION
      * @param {Array} messages - Array of push notification messages
      * @param {Array} notifications - Array of notification records
      */
@@ -476,7 +474,6 @@ class NotificationService {
                 }
             }
 
-            console.log(`Sent ${tickets.length} push notifications`);
             return tickets;
 
         } catch (error) {
