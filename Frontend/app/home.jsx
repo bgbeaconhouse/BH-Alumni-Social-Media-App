@@ -111,6 +111,14 @@ const Home = () => {
 
         {/* Menu Options */}
         <View style={styles.menuSection}>
+          {/* Stories Button */}
+          <TouchableOpacity 
+            style={styles.menuButton}
+            onPress={() => router.push('/stories')}
+          >
+            <Text style={styles.menuText}>Stories</Text>
+          </TouchableOpacity>
+
           {/* Posts Button */}
           <TouchableOpacity 
             style={[styles.menuButton, styles.primaryButton]}
@@ -256,6 +264,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ecf0f1',
   },
+  // NEW: Stories button styling
   primaryButton: {
     backgroundColor: '#2c3e50',
     borderColor: '#2c3e50',
