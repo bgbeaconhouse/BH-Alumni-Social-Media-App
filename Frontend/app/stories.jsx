@@ -9,37 +9,6 @@ const Stories = () => {
   const [error, setError] = useState(null);
   const router = useRouter();
 
-  // Mock data for now - we'll replace this with API calls later
-  const mockStories = [
-    {
-      id: 1,
-      userId: 1,
-      userName: 'John Doe',
-      userAvatar: null,
-      imageUrl: 'https://picsum.photos/400/600?random=1',
-      createdAt: new Date(),
-      viewed: false
-    },
-    {
-      id: 2,
-      userId: 2,
-      userName: 'Jane Smith',
-      userAvatar: null,
-      imageUrl: 'https://picsum.photos/400/600?random=2',
-      createdAt: new Date(),
-      viewed: true
-    },
-    {
-      id: 3,
-      userId: 3,
-      userName: 'Mike Johnson',
-      userAvatar: null,
-      imageUrl: 'https://picsum.photos/400/600?random=3',
-      createdAt: new Date(),
-      viewed: false
-    }
-  ];
-
   useEffect(() => {
     fetchStories();
   }, []);
@@ -47,15 +16,37 @@ const Stories = () => {
   const fetchStories = async () => {
     try {
       setLoading(true);
-      // For now, use mock data
-      // TODO: Replace with actual API call
-      setTimeout(() => {
-        setStories(mockStories);
+      setError(null);
+
+      const token = await SecureStore.getItemAsync('authToken');
+      if (!token) {
+        setError("Please log in to view stories");
         setLoading(false);
-      }, 1000);
+        return;
+      }
+
+      console.log('📖 Fetching stories from API...');
+      const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch stories');
+      }
+
+      const storiesData = await response.json();
+      console.log(`📖 Fetched ${storiesData.length} stories`);
+      setStories(storiesData);
+
     } catch (err) {
       console.error('Error fetching stories:', err);
-      setError('Failed to load stories');
+      setError(err.message || 'Failed to load stories');
+    } finally {
       setLoading(false);
     }
   };
@@ -79,7 +70,7 @@ const Stories = () => {
     >
       <View style={[styles.storyContainer, !item.viewed && styles.unviewedStory]}>
         <Image 
-          source={{ uri: item.imageUrl }} 
+          source={{ uri: `https://bh-alumni-social-media-app.onrender.com${item.mediaUrl}` }} 
           style={styles.storyImage}
           resizeMode="cover"
         />
@@ -149,7 +140,7 @@ const Stories = () => {
             <Text style={styles.logo}>BH</Text>
             <Text style={styles.emptyTitle}>No Stories Yet</Text>
             <Text style={styles.emptySubtitle}>Be the first to share a story</Text>
-            <TouchableOpacity style={styles.createStoryButton}>
+            <TouchableOpacity style={styles.createStoryButton} onPress={() => router.push('/createStory')}>
               <Text style={styles.createStoryButtonText}>Create Story</Text>
             </TouchableOpacity>
           </View>

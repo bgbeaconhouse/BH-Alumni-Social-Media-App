@@ -8,7 +8,10 @@ router.use("/cart", require("./cart"));
 router.use("/orders", require("./orders"));
 router.use("/shipping-addresses", require("./shipping-addresses"));
 
-// NEW: Add notifications routes
+// NEW: Add stories routes
+router.use("/stories", require("./stories"));
+
+// Add notifications routes
 const { router: notificationsRouter } = require("./notifications");
 router.use("/notifications", notificationsRouter);
 

@@ -11,6 +11,7 @@ import {
   Animated
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -42,6 +43,7 @@ const StoryViewer = () => {
   useEffect(() => {
     if (stories.length > 0) {
       startProgress();
+      markStoryAsViewed(stories[currentIndex]);
     }
     return () => {
       if (progressTimer.current) {
@@ -126,7 +128,7 @@ const StoryViewer = () => {
       
       {/* Story Image */}
       <Image 
-        source={{ uri: currentStory.imageUrl }} 
+        source={{ uri: `https://bh-alumni-social-media-app.onrender.com${currentStory.mediaUrl}` }} 
         style={styles.storyImage}
         resizeMode="cover"
       />

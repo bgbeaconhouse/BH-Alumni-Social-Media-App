@@ -38,8 +38,42 @@ const StoryPreview = () => {
         return;
       }
 
-      // For now, we'll simulate posting (replace with real API call later)
-      await simulatePostStory(mediaUri, mediaType);
+      console.log('📤 Posting story to backend...');
+
+      // Prepare form data
+      const formData = new FormData();
+      
+      // Get file info from URI
+      const uriParts = mediaUri.split('.');
+      const fileType = uriParts[uriParts.length - 1];
+      const fileName = `story-${Date.now()}.${fileType}`;
+
+      // Append media file
+      formData.append('media', {
+        uri: mediaUri,
+        name: fileName,
+        type: mediaType === 'video' 
+          ? `video/${fileType}` 
+          : `image/${fileType}`
+      });
+
+      // Post to backend
+      const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          // Don't set Content-Type header - let FormData set it
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to post story');
+      }
+
+      const result = await response.json();
+      console.log('✅ Story posted successfully:', result.id);
 
       // Show success message
       Alert.alert(
@@ -55,21 +89,13 @@ const StoryPreview = () => {
 
     } catch (error) {
       console.error('Error posting story:', error);
-      Alert.alert('Error', 'Failed to post story. Please try again.');
+      Alert.alert('Error', error.message || 'Failed to post story. Please try again.');
     } finally {
       setIsPosting(false);
     }
   };
 
-  // Simulate API call - replace with real backend integration later
-  const simulatePostStory = async (uri, type) => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        console.log('Story "posted":', { uri, type, timestamp: new Date() });
-        resolve();
-      }, 2000); // Simulate network delay
-    });
-  };
+  // Remove the simulate function - no longer needed
 
   const handleRetake = () => {
     if (source === 'camera') {
