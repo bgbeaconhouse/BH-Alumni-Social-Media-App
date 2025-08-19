@@ -138,7 +138,7 @@ const Stories = () => {
           <Text style={styles.backButtonText}>← Home</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Stories</Text>
-        <TouchableOpacity style={styles.addButton}>
+        <TouchableOpacity style={styles.addButton} onPress={() => router.push('/createStory')}>
           <Text style={styles.addButtonText}>+ Add</Text>
         </TouchableOpacity>
       </View>
