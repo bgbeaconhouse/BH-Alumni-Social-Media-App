@@ -8,9 +8,11 @@ import {
   Dimensions, 
   StatusBar,
   PanGestureHandler,
-  Animated
+  Animated,
+  Alert
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import * as SecureStore from 'expo-secure-store';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -25,12 +27,27 @@ const StoryViewer = () => {
   const progressAnim = useRef(new Animated.Value(0)).current;
   const progressTimer = useRef(null);
 
+  // Create video player for current story - MOVED OUTSIDE CONDITIONAL RENDERING
+  const currentStory = stories[currentIndex] || null;
+  const videoUrl = currentStory?.mediaType === 'video' 
+    ? `https://bh-alumni-social-media-app.onrender.com${currentStory.mediaUrl}` 
+    : null;
+    
+  const player = useVideoPlayer(videoUrl, (player) => {
+    if (videoUrl) {
+      player.loop = false;
+      player.muted = false;
+    }
+  });
+
   const STORY_DURATION = 5000; // 5 seconds per story
 
   useEffect(() => {
     if (allStories) {
       try {
         const parsedStories = JSON.parse(allStories);
+        console.log('🔍 DEBUG: Parsed stories:', parsedStories);
+        console.log('🔍 DEBUG: Current story:', parsedStories[parseInt(storyIndex) || 0]);
         setStories(parsedStories);
         setCurrentIndex(parseInt(storyIndex) || 0);
       } catch (error) {
@@ -40,17 +57,52 @@ const StoryViewer = () => {
     }
   }, [allStories, storyIndex]);
 
+  const markStoryAsViewed = async (story) => {
+    // Don't mark own stories as viewed
+    if (story.isOwnStory) {
+      return;
+    }
+
+    try {
+      const token = await SecureStore.getItemAsync('authToken');
+      if (!token) return;
+
+      console.log(`👁️ Marking story ${story.id} as viewed`);
+
+      const response = await fetch(`https://bh-alumni-social-media-app.onrender.com/api/stories/${story.id}/view`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        console.log('✅ Story marked as viewed');
+      }
+    } catch (error) {
+      console.error('Error marking story as viewed:', error);
+    }
+  };
+
   useEffect(() => {
     if (stories.length > 0) {
       startProgress();
       markStoryAsViewed(stories[currentIndex]);
+      
+      // Start video if it's a video story
+      const story = stories[currentIndex];
+      if (story?.mediaType === 'video' && player) {
+        console.log('🎬 Starting video playback for story:', story.id);
+        player.play();
+      }
     }
     return () => {
       if (progressTimer.current) {
         clearTimeout(progressTimer.current);
       }
     };
-  }, [currentIndex, stories]);
+  }, [currentIndex, stories, player]);
 
   const startProgress = () => {
     // Reset progress
@@ -116,22 +168,81 @@ const StoryViewer = () => {
     router.push('/stories');
   };
 
-  if (stories.length === 0 || currentIndex >= stories.length) {
+  const handleDeleteStory = () => {
+    Alert.alert(
+      'Delete Story',
+      'Are you sure you want to delete this story?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await SecureStore.getItemAsync('authToken');
+              if (!token) {
+                Alert.alert('Error', 'Authentication required');
+                return;
+              }
+
+              console.log(`🗑️ Deleting story ${currentStory.id}`);
+
+              const response = await fetch(`https://bh-alumni-social-media-app.onrender.com/api/stories/${currentStory.id}`, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                },
+              });
+
+              if (response.ok) {
+                console.log('✅ Story deleted successfully');
+                Alert.alert('Success', 'Story deleted successfully', [
+                  {
+                    text: 'OK',
+                    onPress: () => router.push('/stories')
+                  }
+                ]);
+              } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to delete story');
+              }
+            } catch (error) {
+              console.error('❌ Error deleting story:', error);
+              Alert.alert('Error', error.message || 'Failed to delete story');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  if (stories.length === 0 || currentIndex >= stories.length || !currentStory) {
     return null;
   }
-
-  const currentStory = stories[currentIndex];
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
       
-      {/* Story Image */}
-      <Image 
-        source={{ uri: `https://bh-alumni-social-media-app.onrender.com${currentStory.mediaUrl}` }} 
-        style={styles.storyImage}
-        resizeMode="cover"
-      />
+      {/* Story Media - Support both images and videos */}
+      {currentStory.mediaType === 'video' ? (
+        <VideoView
+          style={styles.storyImage}
+          player={player}
+          allowsFullscreen={false}
+          showsTimecodes={false}
+          requiresLinearPlayback={false}
+        />
+      ) : (
+        <Image 
+          source={{ uri: `https://bh-alumni-social-media-app.onrender.com${currentStory.mediaUrl}` }} 
+          style={styles.storyImage}
+          resizeMode="cover"
+        />
+      )}
 
       {/* Progress Bar */}
       <View style={styles.progressContainer}>
@@ -168,9 +279,17 @@ const StoryViewer = () => {
             </Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-          <Text style={styles.closeButtonText}>×</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          {/* Show delete button only for own stories */}
+          {currentStory.isOwnStory && (
+            <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteStory}>
+              <Text style={styles.deleteButtonText}>🗑️</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+            <Text style={styles.closeButtonText}>×</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Tap Areas */}
@@ -285,6 +404,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '300',
     letterSpacing: 0.5,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  deleteButtonText: {
+    fontSize: 16,
   },
   closeButton: {
     width: 40,
