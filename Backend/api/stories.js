@@ -34,11 +34,12 @@ const fileFilter = (req, file, cb) => {
     }
 };
 
+// Change from .single('media') to .array('media', 5) like posts
 const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
-    limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
-}).single('media'); // Single file for stories
+    limits: { fileSize: 100 * 1024 * 1024 }
+}).array('media', 5); // Changed from .single('media')
 
 // GET - Fetch all active stories (not expired)
 router.get("/", verifyToken, async (req, res, next) => {
@@ -117,7 +118,8 @@ router.post("/", verifyToken, upload, async (req, res, next) => {
 
     try {
         const userId = req.userId;
-        const file = req.file;
+        const files = req.files;
+const file = files[0]; // Get first file from array
 
         if (!file) {
             return res.status(400).json({ error: "Media file is required for stories." });
