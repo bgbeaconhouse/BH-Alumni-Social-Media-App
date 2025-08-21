@@ -9,18 +9,35 @@ const CreateStory = () => {
 
   const requestPermissions = async () => {
     try {
-      // Request camera permissions
-      const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
-      // Request media library permissions
-      const mediaPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (Platform.OS === 'android') {
+        // Android needs explicit permission requests
+        const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+        const mediaPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-      if (cameraPermission.status !== 'granted' || mediaPermission.status !== 'granted') {
-        Alert.alert(
-          'Permissions Required',
-          'Camera and photo library access are needed to create stories.',
-          [{ text: 'OK' }]
-        );
-        return false;
+        console.log('🔍 Android Camera permission:', cameraPermission.status);
+        console.log('🔍 Android Media permission:', mediaPermission.status);
+
+        if (cameraPermission.status !== 'granted' || mediaPermission.status !== 'granted') {
+          Alert.alert(
+            'Permissions Required',
+            'Camera and photo library access are needed to create stories.',
+            [{ text: 'OK' }]
+          );
+          return false;
+        }
+      } else {
+        // iOS permission handling
+        const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+        const mediaPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+        if (cameraPermission.status !== 'granted' || mediaPermission.status !== 'granted') {
+          Alert.alert(
+            'Permissions Required',
+            'Camera and photo library access are needed to create stories.',
+            [{ text: 'OK' }]
+          );
+          return false;
+        }
       }
       return true;
     } catch (error) {
@@ -36,16 +53,25 @@ const CreateStory = () => {
     setIsLoading(true);
     try {
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        mediaTypes: ImagePicker.MediaTypeOptions.All, // Use the working version
         allowsEditing: false,
         quality: 0.8,
         videoMaxDuration: 10, // 10 second max for stories
         aspect: [9, 16], // Story aspect ratio
       });
 
+      console.log('📷 Camera result:', result);
+
       if (!result.canceled && result.assets && result.assets[0]) {
         const selectedMedia = result.assets[0];
         const mediaType = selectedMedia.type === 'video' ? 'video' : 'image';
+        
+        console.log('📷 Selected media:', {
+          uri: selectedMedia.uri,
+          type: mediaType,
+          platform: Platform.OS
+        });
+        
         // Navigate to preview with the captured media
         router.push({
           pathname: '/storyPreview',
@@ -71,15 +97,23 @@ const CreateStory = () => {
     setIsLoading(true);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        mediaTypes: ImagePicker.MediaTypeOptions.All, // Use the working version
         allowsEditing: false,
         quality: 0.8,
         aspect: [9, 16],
       });
 
+      console.log('🖼️ Gallery result:', result);
+
       if (!result.canceled && result.assets && result.assets[0]) {
         const selectedMedia = result.assets[0];
         const mediaType = selectedMedia.type === 'video' ? 'video' : 'image';
+        
+        console.log('🖼️ Selected media:', {
+          uri: selectedMedia.uri,
+          type: mediaType,
+          platform: Platform.OS
+        });
         
         // Navigate to preview with the selected media
         router.push({
@@ -147,6 +181,9 @@ const CreateStory = () => {
           <Text style={styles.guidelineText}>• Stories are visible for 24 hours</Text>
           <Text style={styles.guidelineText}>• Share positive recovery moments</Text>
           <Text style={styles.guidelineText}>• Respect community guidelines</Text>
+          {Platform.OS === 'android' && (
+            <Text style={styles.guidelineText}>• Android testing mode active</Text>
+          )}
         </View>
       </View>
 

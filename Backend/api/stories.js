@@ -137,20 +137,20 @@ router.post("/", verifyToken, upload, async (req, res, next) => {
                 const optimizedFilename = `optimized-${file.filename}`;
                 const optimizedFilePath = path.join('/mnt/disks/uploads/optimized/', optimizedFilename);
                 
-                await sharp(file.path)
-                    .resize({ 
-                        width: 1080, 
-                        height: 1920, 
-                        fit: 'inside',
-                        withoutEnlargement: true 
-                    })
-                    .jpeg({ 
-                        quality: 85,
-                        progressive: true
-                    })
-                    .toFile(optimizedFilePath);
+                // await sharp(file.path)
+                //     .resize({ 
+                //         width: 1080, 
+                //         height: 1920, 
+                //         fit: 'inside',
+                //         withoutEnlargement: true 
+                //     })
+                //     .jpeg({ 
+                //         quality: 85,
+                //         progressive: true
+                //     })
+                //     .toFile(optimizedFilePath);
 
-                console.log('🖼️ Image optimized for story format');
+                // console.log('🖼️ Image optimized for story format');
             } catch (optimizationError) {
                 console.error("Story image optimization failed:", optimizationError);
             }

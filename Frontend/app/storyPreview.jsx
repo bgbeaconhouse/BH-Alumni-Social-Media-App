@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -8,7 +8,8 @@ import {
   Dimensions, 
   StatusBar, 
   Alert,
-  ActivityIndicator 
+  ActivityIndicator,
+  Platform // Added Platform import
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Video } from 'expo-av';
@@ -21,6 +22,25 @@ const StoryPreview = () => {
   const router = useRouter();
   const [isPosting, setIsPosting] = useState(false);
 
+  // Debug logging to see what we received
+  useEffect(() => {
+    console.log('🔍 Media URI received:', mediaUri);
+    console.log('🔍 Media type:', mediaType);
+    console.log('🔍 Source:', source);
+  }, [mediaUri, mediaType, source]);
+
+  // Android file access handler - try different approaches
+  const getAndroidCompatibleUri = (uri) => {
+    if (Platform.OS === 'android' && uri) {
+      console.log('🔍 Original URI:', uri);
+      
+      // For Android, try using the original URI without modifications
+      // Expo Go has different file access than production builds
+      return uri;
+    }
+    return uri;
+  };
+
   const handlePostStory = async () => {
     if (!mediaUri) {
       Alert.alert('Error', 'No media selected');
@@ -30,72 +50,89 @@ const StoryPreview = () => {
     setIsPosting(true);
 
     try {
-      // Get auth token
       const authToken = await SecureStore.getItemAsync('authToken');
+      console.log('🔍 Auth token exists:', !!authToken);
+      console.log('🔍 Auth token length:', authToken?.length);
+      
       if (!authToken) {
         Alert.alert('Error', 'Please log in to post a story');
         router.push('/login');
         return;
       }
 
-      console.log('📤 Posting story to backend...');
+      console.log('📤 About to post story...');
+      console.log('🔍 Media URI:', mediaUri);
+      console.log('🔍 Platform:', Platform.OS);
+      console.log('🔍 API URL:', 'https://bh-alumni-social-media-app.onrender.com/api/stories');
 
-      // Prepare form data
+      // Test if you can reach the API at all
+      console.log('🔍 Testing basic API connectivity...');
+      const testResponse = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+      console.log('🔍 Test response status:', testResponse.status);
+
+      // Try EXACT posts approach - use 'media' as array even for single file
       const formData = new FormData();
       
-      // Get file info from URI
       const uriParts = mediaUri.split('.');
       const fileType = uriParts[uriParts.length - 1];
-      const fileName = `story-${Date.now()}.${fileType}`;
-
-      // Append media file
+      
+      // Use exact same structure as createPosts.jsx
       formData.append('media', {
         uri: mediaUri,
-        name: fileName,
-        type: mediaType === 'video' 
-          ? `video/${fileType}` 
-          : `image/${fileType}`
+        name: `media-${Date.now()}.${fileType}`, // Use 'media-' prefix like posts
+        type: mediaType === 'image' ? `image/${fileType}` : `video/${fileType}`,
       });
 
-      // Post to backend
+      console.log('🔍 Using EXACT posts FormData structure');
+      console.log('🔍 Media URI:', mediaUri);
+      console.log('🔍 File type:', fileType);
+
+      console.log('🔍 FormData prepared, making POST request...');
+
       const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
-          // Don't set Content-Type header - let FormData set it
+          // Note: Don't set Content-Type for FormData, let browser set it
         },
         body: formData,
       });
 
+      console.log('🔍 POST Response status:', response.status);
+      console.log('🔍 POST Response ok:', response.ok);
+      
+      // Get response text to see what error the backend is returning
+      const responseText = await response.text();
+      console.log('🔍 Response text:', responseText);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to post story');
+        throw new Error(`HTTP ${response.status}: ${responseText}`);
       }
 
-      const result = await response.json();
-      console.log('✅ Story posted successfully:', result.id);
+      const result = JSON.parse(responseText);
+      console.log('✅ Story posted successfully:', result);
 
-      // Show success message
       Alert.alert(
         'Story Posted!',
         'Your story has been shared with the community.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.push('/stories')
-          }
-        ]
+        [{ text: 'OK', onPress: () => router.push('/stories') }]
       );
 
     } catch (error) {
-      console.error('Error posting story:', error);
+      console.log('❌ FULL ERROR OBJECT:', error);
+      console.log('❌ Error name:', error.name);
+      console.log('❌ Error message:', error.message);
+      console.log('❌ Error stack:', error.stack);
       Alert.alert('Error', error.message || 'Failed to post story. Please try again.');
     } finally {
       setIsPosting(false);
     }
   };
-
-  // Remove the simulate function - no longer needed
 
   const handleRetake = () => {
     if (source === 'camera') {
@@ -140,18 +177,46 @@ const StoryPreview = () => {
       <View style={styles.mediaContainer}>
         {mediaType === 'video' ? (
           <Video
-            source={{ uri: mediaUri }}
+            source={{ uri: getAndroidCompatibleUri(mediaUri) }}
             style={styles.media}
             useNativeControls
             resizeMode="cover"
             shouldPlay={false}
+            onError={(error) => {
+              console.log('❌ Video load error:', error);
+              console.log('❌ Failed URI:', mediaUri);
+            }}
+            onLoad={() => {
+              console.log('✅ Video loaded successfully');
+            }}
           />
         ) : (
-          <Image 
-            source={{ uri: mediaUri }} 
-            style={styles.media}
-            resizeMode="cover"
-          />
+          <View style={styles.mediaContainer}>
+            <Image 
+              source={{ uri: getAndroidCompatibleUri(mediaUri) }} 
+              style={styles.media}
+              resizeMode="cover"
+              onLoad={(event) => {
+                console.log('✅ Image loaded successfully');
+                console.log('✅ Image dimensions:', event.nativeEvent.source);
+              }}
+              onError={(error) => {
+                console.log('❌ Image load error:', error.nativeEvent);
+                console.log('❌ Failed URI:', mediaUri);
+                console.log('❌ Platform:', Platform.OS);
+              }}
+              onLoadStart={() => {
+                console.log('🔄 Image load started for:', mediaUri);
+              }}
+              onLoadEnd={() => {
+                console.log('⏹️ Image load ended');
+              }}
+            />
+            {/* Debug overlay - remove after testing */}
+            <Text style={{position: 'absolute', top: 100, left: 20, color: 'white', backgroundColor: 'red', padding: 5}}>
+              Debug: Platform {Platform.OS} - Image should be here
+            </Text>
+          </View>
         )}
       </View>
 

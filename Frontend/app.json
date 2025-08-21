@@ -3,7 +3,7 @@
     "scheme": "alumniapp",
     "name": "BH Alum",
     "slug": "Frontend",
-    "version": "1.0.4",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/BH-App-Icon.png",
     "userInterfaceStyle": "light",
@@ -39,7 +39,9 @@
         "RECORD_AUDIO",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
-        "INTERNET"
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "ACCESS_WIFI_STATE"
       ],
       "blockedPermissions": [
         "USE_BIOMETRIC",
