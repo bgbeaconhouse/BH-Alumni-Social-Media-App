@@ -65,46 +65,76 @@ const StoryPreview = () => {
       console.log('🔍 Platform:', Platform.OS);
       console.log('🔍 API URL:', 'https://bh-alumni-social-media-app.onrender.com/api/stories');
 
-      // Test if you can reach the API at all
-      console.log('🔍 Testing basic API connectivity...');
-      const testResponse = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-        },
-      });
-      console.log('🔍 Test response status:', testResponse.status);
+      // TEST: Try stories endpoint without file first
+      console.log('🔍 Testing stories endpoint without file...');
+      
+      try {
+        const testResponse = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories/test', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ test: 'data' }),
+        });
+        
+        const testResult = await testResponse.text();
+        console.log('🔍 Test stories response status:', testResponse.status);
+        console.log('🔍 Test stories response:', testResult);
+        
+        if (!testResponse.ok) {
+          throw new Error(`Test failed: ${testResponse.status} ${testResult}`);
+        }
+        
+      } catch (testError) {
+        console.log('❌ Stories test endpoint failed:', testError.message);
+        Alert.alert('Debug', `Stories test failed: ${testError.message}`);
+        return;
+      }
 
-      // Try EXACT posts approach - use 'media' as array even for single file
+      // If test passes, try with file
+      console.log('✅ Stories test endpoint works, trying with file...');
+
       const formData = new FormData();
       
       const uriParts = mediaUri.split('.');
       const fileType = uriParts[uriParts.length - 1];
       
-      // Use exact same structure as createPosts.jsx
+      // Try the most basic file upload approach
       formData.append('media', {
         uri: mediaUri,
-        name: `media-${Date.now()}.${fileType}`, // Use 'media-' prefix like posts
-        type: mediaType === 'image' ? `image/${fileType}` : `video/${fileType}`,
+        name: `test-story.${fileType}`,
+        type: `image/${fileType}`,
       });
 
-      console.log('🔍 Using EXACT posts FormData structure');
-      console.log('🔍 Media URI:', mediaUri);
-      console.log('🔍 File type:', fileType);
+      console.log('🔍 FormData created with:');
+      console.log('  - URI:', mediaUri);
+      console.log('  - Name: test-story.' + fileType);
+      console.log('  - Type: image/' + fileType);
 
-      console.log('🔍 FormData prepared, making POST request...');
+      // Try a shorter timeout first
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.log('⏰ Request timed out after 30 seconds');
+        controller.abort();
+      }, 30000);
+
+      console.log('🔍 Making file upload request...');
 
       const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
-          // Note: Don't set Content-Type for FormData, let browser set it
+          // Don't set Content-Type for FormData
         },
         body: formData,
+        signal: controller.signal,
       });
 
-      console.log('🔍 POST Response status:', response.status);
-      console.log('🔍 POST Response ok:', response.ok);
+      clearTimeout(timeoutId);
+      console.log('🔍 File upload response received!');
+      console.log('🔍 Response status:', response.status);
+      console.log('🔍 Response ok:', response.ok);
       
       // Get response text to see what error the backend is returning
       const responseText = await response.text();
