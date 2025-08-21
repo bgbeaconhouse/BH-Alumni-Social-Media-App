@@ -118,8 +118,7 @@ router.post("/", verifyToken, upload, async (req, res, next) => {
 
     try {
         const userId = req.userId;
-        const files = req.files;
-const file = files[0]; // Get first file from array
+        const file = req.file;
 
         if (!file) {
             return res.status(400).json({ error: "Media file is required for stories." });
@@ -385,5 +384,20 @@ router.get("/:storyId/views", verifyToken, async (req, res, next) => {
         next(error);
     }
 });
-
+// Add this test route ABOVE your existing POST route
+router.post("/test", verifyToken, async (req, res, next) => {
+    try {
+        console.log('📝 Test story route hit!');
+        console.log('📝 User ID:', req.userId);
+        console.log('📝 Request body:', req.body);
+        
+        res.status(200).json({ 
+            message: "Test story endpoint works!",
+            userId: req.userId 
+        });
+    } catch (error) {
+        console.error('❌ Test story error:', error);
+        next(error);
+    }
+});
 module.exports = router;
