@@ -3,7 +3,7 @@
     "scheme": "alumniapp",
     "name": "BH Alum",
     "slug": "Frontend",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/BH-App-Icon.png",
     "userInterfaceStyle": "light",
