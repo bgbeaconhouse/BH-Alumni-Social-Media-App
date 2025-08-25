@@ -41,128 +41,107 @@ const StoryPreview = () => {
     return uri;
   };
 
-  const handlePostStory = async () => {
-    if (!mediaUri) {
-      Alert.alert('Error', 'No media selected');
+  // Fixed version of storyPreview.jsx handlePostStory function
+
+const handlePostStory = async () => {
+  if (!mediaUri) {
+    Alert.alert('Error', 'No media selected');
+    return;
+  }
+
+  setIsPosting(true);
+
+  try {
+    const authToken = await SecureStore.getItemAsync('authToken');
+    
+    if (!authToken) {
+      Alert.alert('Error', 'Please log in to post a story');
+      router.push('/login');
       return;
     }
 
-    setIsPosting(true);
+    console.log('📤 About to post story...');
+    console.log('🔍 Media URI:', mediaUri);
+    console.log('🔍 Media Type:', mediaType);
 
-    try {
-      const authToken = await SecureStore.getItemAsync('authToken');
-      console.log('🔍 Auth token exists:', !!authToken);
-      console.log('🔍 Auth token length:', authToken?.length);
-      
-      if (!authToken) {
-        Alert.alert('Error', 'Please log in to post a story');
-        router.push('/login');
-        return;
-      }
-
-      console.log('📤 About to post story...');
-      console.log('🔍 Media URI:', mediaUri);
-      console.log('🔍 Platform:', Platform.OS);
-      console.log('🔍 API URL:', 'https://bh-alumni-social-media-app.onrender.com/api/stories');
-
-      // TEST: Try stories endpoint without file first
-      console.log('🔍 Testing stories endpoint without file...');
-      
-      try {
-        const testResponse = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories/test', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ test: 'data' }),
-        });
-        
-        const testResult = await testResponse.text();
-        console.log('🔍 Test stories response status:', testResponse.status);
-        console.log('🔍 Test stories response:', testResult);
-        
-        if (!testResponse.ok) {
-          throw new Error(`Test failed: ${testResponse.status} ${testResult}`);
-        }
-        
-      } catch (testError) {
-        console.log('❌ Stories test endpoint failed:', testError.message);
-        Alert.alert('Debug', `Stories test failed: ${testError.message}`);
-        return;
-      }
-
-      // If test passes, try with file
-      console.log('✅ Stories test endpoint works, trying with file...');
-
-      const formData = new FormData();
-      
-      const uriParts = mediaUri.split('.');
-      const fileType = uriParts[uriParts.length - 1];
-      
-      // Try the most basic file upload approach
-      formData.append('media', {
-        uri: mediaUri,
-        name: `test-story.${fileType}`,
-        type: `image/${fileType}`,
-      });
-
-      console.log('🔍 FormData created with:');
-      console.log('  - URI:', mediaUri);
-      console.log('  - Name: test-story.' + fileType);
-      console.log('  - Type: image/' + fileType);
-
-      // Try a shorter timeout first
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.log('⏰ Request timed out after 30 seconds');
-        controller.abort();
-      }, 30000);
-
-      console.log('🔍 Making file upload request...');
-
-      const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          // Don't set Content-Type for FormData
-        },
-        body: formData,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-      console.log('🔍 File upload response received!');
-      console.log('🔍 Response status:', response.status);
-      console.log('🔍 Response ok:', response.ok);
-      
-      // Get response text to see what error the backend is returning
-      const responseText = await response.text();
-      console.log('🔍 Response text:', responseText);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${responseText}`);
-      }
-
-      const result = JSON.parse(responseText);
-      console.log('✅ Story posted successfully:', result);
-
-      Alert.alert(
-        'Story Posted!',
-        'Your story has been shared with the community.',
-        [{ text: 'OK', onPress: () => router.push('/stories') }]
-      );
-
-    } catch (error) {
-      console.log('❌ FULL ERROR OBJECT:', error);
-      console.log('❌ Error name:', error.name);
-      console.log('❌ Error message:', error.message);
-      console.log('❌ Error stack:', error.stack);
-      Alert.alert('Error', error.message || 'Failed to post story. Please try again.');
-    } finally {
-      setIsPosting(false);
+    const formData = new FormData();
+    
+    // Get file extension from URI
+    const uriParts = mediaUri.split('.');
+    const fileExtension = uriParts[uriParts.length - 1].toLowerCase();
+    
+    // Determine proper MIME type
+    let mimeType;
+    if (fileExtension === 'jpg' || fileExtension === 'jpeg') {
+      mimeType = 'image/jpeg';
+    } else if (fileExtension === 'png') {
+      mimeType = 'image/png';
+    } else if (fileExtension === 'gif') {
+      mimeType = 'image/gif';
+    } else if (fileExtension === 'mp4') {
+      mimeType = 'video/mp4';
+    } else if (fileExtension === 'mov') {
+      mimeType = 'video/quicktime';
+    } else {
+      // Fallback based on mediaType prop
+      mimeType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
     }
-  };
+    
+    // CRITICAL FIX: Use 'media' as the field name (not 'file')
+    // The backend expects req.files (array) not req.file (single)
+    formData.append('media', {
+      uri: mediaUri,
+      type: mimeType,
+      name: `story-${Date.now()}.${fileExtension}`,
+    });
+
+    console.log('📤 Uploading with FormData field "media"');
+    console.log('🔍 File details:', {
+      name: `story-${Date.now()}.${fileExtension}`,
+      type: mimeType,
+      extension: fileExtension
+    });
+
+    const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        // Don't set Content-Type - let FormData handle it
+      },
+      body: formData,
+    });
+
+    console.log('🔍 Response status:', response.status);
+    
+    const responseText = await response.text();
+    console.log('🔍 Response text:', responseText);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${responseText}`);
+    }
+
+    const result = JSON.parse(responseText);
+    console.log('✅ Story posted successfully:', result);
+
+    Alert.alert(
+      'Story Posted!',
+      'Your story has been shared with the community.',
+      [{ text: 'OK', onPress: () => router.push('/stories') }]
+    );
+
+  } catch (error) {
+    console.error('❌ Error posting story:', error);
+    Alert.alert('Debug Error Details', `
+      Error: ${error.message}
+      
+      Media URI: ${mediaUri}
+      Media Type: ${mediaType}
+      Platform: ${Platform.OS}
+    `);
+  } finally {
+    setIsPosting(false);
+  }
+};
 
   const handleRetake = () => {
     if (source === 'camera') {

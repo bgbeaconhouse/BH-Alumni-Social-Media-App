@@ -110,19 +110,36 @@ router.get("/", verifyToken, async (req, res, next) => {
     }
 });
 
+// Fixed backend stories route - update your backend/api/stories.js
+
 // POST - Create a new story
-router.post("/", verifyToken, upload, async (req, res, next) => {
-    console.log('📝 Creating new story...');
-    console.log('User ID:', req.userId);
-    console.log('File received:', !!req.file);
+router.post("/", verifyToken, (req, res, next) => {
+    upload(req, res, (err) => {
+        if (err) {
+            console.error('❌ Multer upload error:', err);
+            return res.status(400).json({ error: `Upload error: ${err.message}` });
+        }
 
-    try {
+        console.log('📝 Creating new story...');
+        console.log('📝 User ID:', req.userId);
+        console.log('📝 Files received:', req.files?.length || 0);
+        console.log('📝 File info:', req.files?.[0] ? {
+            filename: req.files[0].filename,
+            mimetype: req.files[0].mimetype,
+            size: req.files[0].size
+        } : 'No file');
+
         const userId = req.userId;
-        const file = req.file;
-
-        if (!file) {
+        
+        // FIXED: Check req.files (array) instead of req.file (single)
+        const files = req.files;
+        
+        if (!files || files.length === 0) {
+            console.log('❌ No files received in request');
             return res.status(400).json({ error: "Media file is required for stories." });
         }
+
+        const file = files[0]; // Get first file from array
 
         console.log('📁 Processing uploaded file:', file.filename);
 
@@ -133,25 +150,28 @@ router.post("/", verifyToken, upload, async (req, res, next) => {
         if (['.jpg', '.jpeg', '.png', '.gif'].includes(fileExtension)) {
             mediaType = 'IMAGE';
             
-            // Optimize image for stories (vertical format)
+            // Optional: Optimize image for stories (vertical format)
             try {
                 const optimizedFilename = `optimized-${file.filename}`;
                 const optimizedFilePath = path.join('/mnt/disks/uploads/optimized/', optimizedFilename);
                 
-                // await sharp(file.path)
-                //     .resize({ 
-                //         width: 1080, 
-                //         height: 1920, 
-                //         fit: 'inside',
-                //         withoutEnlargement: true 
-                //     })
-                //     .jpeg({ 
-                //         quality: 85,
-                //         progressive: true
-                //     })
-                //     .toFile(optimizedFilePath);
+                // Uncomment if you want image optimization
+                /*
+                await sharp(file.path)
+                    .resize({ 
+                        width: 1080, 
+                        height: 1920, 
+                        fit: 'inside',
+                        withoutEnlargement: true 
+                    })
+                    .jpeg({ 
+                        quality: 85,
+                        progressive: true
+                    })
+                    .toFile(optimizedFilePath);
+                */
 
-                // console.log('🖼️ Image optimized for story format');
+                console.log('🖼️ Image ready for story format');
             } catch (optimizationError) {
                 console.error("Story image optimization failed:", optimizationError);
             }
@@ -168,7 +188,7 @@ router.post("/", verifyToken, upload, async (req, res, next) => {
         expiresAt.setHours(expiresAt.getHours() + 24);
 
         // Create story in database
-        const story = await prisma.story.create({
+        prisma.story.create({
             data: {
                 userId: userId,
                 mediaUrl: file.filename,
@@ -187,31 +207,32 @@ router.post("/", verifyToken, upload, async (req, res, next) => {
                     }
                 }
             }
+        })
+        .then(story => {
+            console.log('✅ Story created successfully:', story.id);
+
+            // Format response
+            const formattedStory = {
+                id: story.id,
+                userId: story.userId,
+                userName: `${story.user.firstName} ${story.user.lastName}`,
+                userAvatar: story.user.profilePictureUrl,
+                mediaUrl: `/uploads/${story.mediaUrl}`,
+                mediaType: story.mediaType.toLowerCase(),
+                createdAt: story.createdAt,
+                expiresAt: story.expiresAt,
+                viewed: false,
+                viewCount: 0,
+                isOwnStory: true
+            };
+
+            res.status(201).json(formattedStory);
+        })
+        .catch(error => {
+            console.error("❌ Error creating story:", error);
+            next(error);
         });
-
-        console.log('✅ Story created successfully:', story.id);
-
-        // Format response
-        const formattedStory = {
-            id: story.id,
-            userId: story.userId,
-            userName: `${story.user.firstName} ${story.user.lastName}`,
-            userAvatar: story.user.profilePictureUrl,
-            mediaUrl: `/uploads/${story.mediaUrl}`,
-            mediaType: story.mediaType.toLowerCase(),
-            createdAt: story.createdAt,
-            expiresAt: story.expiresAt,
-            viewed: false,
-            viewCount: 0,
-            isOwnStory: true
-        };
-
-        res.status(201).json(formattedStory);
-
-    } catch (error) {
-        console.error("Error creating story:", error);
-        next(error);
-    }
+    });
 });
 
 // POST - Mark story as viewed
