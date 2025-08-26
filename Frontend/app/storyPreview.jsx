@@ -9,7 +9,7 @@ import {
   StatusBar, 
   Alert,
   ActivityIndicator,
-  Platform // Added Platform import
+  Platform
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Video } from 'expo-av';
@@ -41,107 +41,105 @@ const StoryPreview = () => {
     return uri;
   };
 
-  // Fixed version of storyPreview.jsx handlePostStory function
-
-const handlePostStory = async () => {
-  if (!mediaUri) {
-    Alert.alert('Error', 'No media selected');
-    return;
-  }
-
-  setIsPosting(true);
-
-  try {
-    const authToken = await SecureStore.getItemAsync('authToken');
-    
-    if (!authToken) {
-      Alert.alert('Error', 'Please log in to post a story');
-      router.push('/login');
+  const handlePostStory = async () => {
+    if (!mediaUri) {
+      Alert.alert('Error', 'No media selected');
       return;
     }
 
-    console.log('📤 About to post story...');
-    console.log('🔍 Media URI:', mediaUri);
-    console.log('🔍 Media Type:', mediaType);
+    setIsPosting(true);
 
-    const formData = new FormData();
-    
-    // Get file extension from URI
-    const uriParts = mediaUri.split('.');
-    const fileExtension = uriParts[uriParts.length - 1].toLowerCase();
-    
-    // Determine proper MIME type
-    let mimeType;
-    if (fileExtension === 'jpg' || fileExtension === 'jpeg') {
-      mimeType = 'image/jpeg';
-    } else if (fileExtension === 'png') {
-      mimeType = 'image/png';
-    } else if (fileExtension === 'gif') {
-      mimeType = 'image/gif';
-    } else if (fileExtension === 'mp4') {
-      mimeType = 'video/mp4';
-    } else if (fileExtension === 'mov') {
-      mimeType = 'video/quicktime';
-    } else {
-      // Fallback based on mediaType prop
-      mimeType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
-    }
-    
-    // CRITICAL FIX: Use 'media' as the field name (not 'file')
-    // The backend expects req.files (array) not req.file (single)
-    formData.append('media', {
-      uri: mediaUri,
-      type: mimeType,
-      name: `story-${Date.now()}.${fileExtension}`,
-    });
-
-    console.log('📤 Uploading with FormData field "media"');
-    console.log('🔍 File details:', {
-      name: `story-${Date.now()}.${fileExtension}`,
-      type: mimeType,
-      extension: fileExtension
-    });
-
-    const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${authToken}`,
-        // Don't set Content-Type - let FormData handle it
-      },
-      body: formData,
-    });
-
-    console.log('🔍 Response status:', response.status);
-    
-    const responseText = await response.text();
-    console.log('🔍 Response text:', responseText);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${responseText}`);
-    }
-
-    const result = JSON.parse(responseText);
-    console.log('✅ Story posted successfully:', result);
-
-    Alert.alert(
-      'Story Posted!',
-      'Your story has been shared with the community.',
-      [{ text: 'OK', onPress: () => router.push('/stories') }]
-    );
-
-  } catch (error) {
-    console.error('❌ Error posting story:', error);
-    Alert.alert('Debug Error Details', `
-      Error: ${error.message}
+    try {
+      const authToken = await SecureStore.getItemAsync('authToken');
       
-      Media URI: ${mediaUri}
-      Media Type: ${mediaType}
-      Platform: ${Platform.OS}
-    `);
-  } finally {
-    setIsPosting(false);
-  }
-};
+      if (!authToken) {
+        Alert.alert('Error', 'Please log in to post a story');
+        router.push('/login');
+        return;
+      }
+
+      console.log('📤 About to post story...');
+      console.log('🔍 Media URI:', mediaUri);
+      console.log('🔍 Media Type:', mediaType);
+
+      const formData = new FormData();
+      
+      // Get file extension from URI
+      const uriParts = mediaUri.split('.');
+      const fileExtension = uriParts[uriParts.length - 1].toLowerCase();
+      
+      // Determine proper MIME type
+      let mimeType;
+      if (fileExtension === 'jpg' || fileExtension === 'jpeg') {
+        mimeType = 'image/jpeg';
+      } else if (fileExtension === 'png') {
+        mimeType = 'image/png';
+      } else if (fileExtension === 'gif') {
+        mimeType = 'image/gif';
+      } else if (fileExtension === 'mp4') {
+        mimeType = 'video/mp4';
+      } else if (fileExtension === 'mov') {
+        mimeType = 'video/quicktime';
+      } else {
+        // Fallback based on mediaType prop
+        mimeType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
+      }
+      
+      // CRITICAL FIX: Use 'media' as the field name (not 'file')
+      // The backend expects req.files (array) not req.file (single)
+      formData.append('media', {
+        uri: mediaUri,
+        type: mimeType,
+        name: `story-${Date.now()}.${fileExtension}`,
+      });
+
+      console.log('📤 Uploading with FormData field "media"');
+      console.log('🔍 File details:', {
+        name: `story-${Date.now()}.${fileExtension}`,
+        type: mimeType,
+        extension: fileExtension
+      });
+
+      const response = await fetch('https://bh-alumni-social-media-app.onrender.com/api/stories', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          // Don't set Content-Type - let FormData handle it
+        },
+        body: formData,
+      });
+
+      console.log('🔍 Response status:', response.status);
+      
+      const responseText = await response.text();
+      console.log('🔍 Response text:', responseText);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${responseText}`);
+      }
+
+      const result = JSON.parse(responseText);
+      console.log('✅ Story posted successfully:', result);
+
+      Alert.alert(
+        'Story Posted!',
+        'Your story has been shared with the community.',
+        [{ text: 'OK', onPress: () => router.push('/stories') }]
+      );
+
+    } catch (error) {
+      console.error('❌ Error posting story:', error);
+      Alert.alert('Debug Error Details', `
+        Error: ${error.message}
+        
+        Media URI: ${mediaUri}
+        Media Type: ${mediaType}
+        Platform: ${Platform.OS}
+      `);
+    } finally {
+      setIsPosting(false);
+    }
+  };
 
   const handleRetake = () => {
     if (source === 'camera') {
@@ -200,32 +198,26 @@ const handlePostStory = async () => {
             }}
           />
         ) : (
-          <View style={styles.mediaContainer}>
-            <Image 
-              source={{ uri: getAndroidCompatibleUri(mediaUri) }} 
-              style={styles.media}
-              resizeMode="cover"
-              onLoad={(event) => {
-                console.log('✅ Image loaded successfully');
-                console.log('✅ Image dimensions:', event.nativeEvent.source);
-              }}
-              onError={(error) => {
-                console.log('❌ Image load error:', error.nativeEvent);
-                console.log('❌ Failed URI:', mediaUri);
-                console.log('❌ Platform:', Platform.OS);
-              }}
-              onLoadStart={() => {
-                console.log('🔄 Image load started for:', mediaUri);
-              }}
-              onLoadEnd={() => {
-                console.log('⏹️ Image load ended');
-              }}
-            />
-            {/* Debug overlay - remove after testing */}
-            <Text style={{position: 'absolute', top: 100, left: 20, color: 'white', backgroundColor: 'red', padding: 5}}>
-              Debug: Platform {Platform.OS} - Image should be here
-            </Text>
-          </View>
+          <Image 
+            source={{ uri: getAndroidCompatibleUri(mediaUri) }} 
+            style={styles.media}
+            resizeMode="cover"
+            onLoad={(event) => {
+              console.log('✅ Image loaded successfully');
+              console.log('✅ Image dimensions:', event.nativeEvent.source);
+            }}
+            onError={(error) => {
+              console.log('❌ Image load error:', error.nativeEvent);
+              console.log('❌ Failed URI:', mediaUri);
+              console.log('❌ Platform:', Platform.OS);
+            }}
+            onLoadStart={() => {
+              console.log('🔄 Image load started for:', mediaUri);
+            }}
+            onLoadEnd={() => {
+              console.log('⏹️ Image load ended');
+            }}
+          />
         )}
       </View>
 
