@@ -196,10 +196,13 @@ router.get("/", async (req, res, next) => {
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
 
-        const posts = await prisma.post.findMany({
-            skip,
-            take: limit,
-            include: {
+       const userId = req.query.userId ? parseInt(req.query.userId) : undefined;
+
+const posts = await prisma.post.findMany({
+    skip,
+    take: limit,
+    where: userId ? { authorId: userId } : undefined,
+    include: {
                 author: {
                     select: {
                         id: true,
