@@ -6,6 +6,7 @@ const verifyToken = require("../verify");
 const path = require('path');
 const fs = require('fs').promises;
 const sharp = require('sharp'); // Add Sharp for image optimization
+const ffmpeg = require('fluent-ffmpeg');
 
 // NEW: Import notification service
 const NotificationService = require("../services/notificationService");
@@ -129,9 +130,32 @@ router.post("/", verifyToken, upload, async (req, res, next) => {
                         postId: post.id, 
                         url: file.filename
                     });
-                } else if (['.mp4', '.mpeg', '.mov'].includes(fileExtension)) {
-                    videoAttachments.push({ postId: post.id, url: file.filename });
-                }
+              } else if (['.mp4', '.mpeg', '.mov'].includes(fileExtension)) {
+    let thumbnailFilename = null;
+    try {
+        thumbnailFilename = `thumb-${file.filename}.jpg`;
+        await new Promise((resolve, reject) => {
+            ffmpeg(file.path)
+                .screenshots({
+                    timestamps: ['00:00:01'],
+                    filename: thumbnailFilename,
+                    folder: '/mnt/disks/uploads/optimized/',
+                    size: '480x?'
+                })
+                .on('end', resolve)
+                .on('error', reject);
+        });
+        console.log('🆕 Video thumbnail created:', thumbnailFilename);
+    } catch (thumbError) {
+        console.error('🆕 Thumbnail generation failed:', thumbError);
+        thumbnailFilename = null;
+    }
+    videoAttachments.push({ 
+        postId: post.id, 
+        url: file.filename,
+        thumbnailUrl: thumbnailFilename ? `optimized/${thumbnailFilename}` : null
+    });
+}
             }
 
             if (imageAttachments.length > 0) {
