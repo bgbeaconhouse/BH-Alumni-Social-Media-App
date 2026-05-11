@@ -6,7 +6,23 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { Video } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
+
+const PostVideo = ({ videoUrl, thumbnailUrl }) => {
+  const player = useVideoPlayer(videoUrl, player => {
+    player.loop = false;
+  });
+
+  return (
+    <VideoView
+      player={player}
+      style={styles.postVideo}
+      allowsFullscreen
+      allowsPictureInPicture
+    />
+  );
+};
+
 
 const BASE_URL = 'https://bh-alumni-social-media-app.onrender.com';
 
@@ -164,18 +180,14 @@ if (likeResponse.ok) {
         )}
 
         {/* Video */}
-        {videoAttachments.length > 0 && (
-          <Video
-            source={{ uri: `${BASE_URL}/uploads/${videoAttachments[0].url}` }}
-            style={styles.postVideo}
-            useNativeControls
-            resizeMode="contain"
-            posterSource={videoAttachments[0].thumbnailUrl
-              ? { uri: `${BASE_URL}/uploads/${videoAttachments[0].thumbnailUrl}` }
-              : undefined
-            }
-          />
-        )}
+  {videoAttachments.length > 0 && (
+  <PostVideo
+    videoUrl={`${BASE_URL}/uploads/${videoAttachments[0].url}`}
+    thumbnailUrl={videoAttachments[0].thumbnailUrl
+      ? `${BASE_URL}/uploads/${videoAttachments[0].thumbnailUrl}`
+      : null}
+  />
+)}
 
         {/* Interactions */}
         <View style={styles.interactions}>

@@ -300,6 +300,82 @@ app.post("/api/admin/approve/:userId", verifyToken, async (req, res, next) => {
     }
 });
 
+
+// Forgot password - send reset email
+app.post("/api/auth/forgot-password", async (req, res, next) => {
+    const { email } = req.body;
+    try {
+        const user = await prisma.user.findFirst({ where: { email } });
+        if (!user) {
+            // Don't reveal if email exists or not for security
+            return res.status(200).json({ message: "If that email exists, a reset link has been sent." });
+        }
+
+        // Generate reset token
+        const resetToken = require('crypto').randomBytes(32).toString('hex');
+        const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
+
+        // Save token to database
+        await prisma.$executeRawUnsafe(
+            `UPDATE "User" SET "resetToken" = $1, "resetTokenExpiry" = $2 WHERE id = $3`,
+            resetToken, resetTokenExpiry, user.id
+        );
+
+        // Send reset email
+        const resetLink = `continuum://reset-password?token=${resetToken}`;
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Reset Your Continuum Password',
+            html: `
+                <p>Hello ${user.firstName},</p>
+                <p>You requested a password reset for your Continuum account.</p>
+                <p>Tap the link below to reset your password. This link expires in 1 hour.</p>
+                <a href="${resetLink}" style="background-color:#3797EF;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;display:inline-block;">Reset Password</a>
+                <p>If you didn't request this, you can safely ignore this email.</p>
+            `,
+        };
+
+        await transporter.sendMail(mailOptions);
+        res.status(200).json({ message: "If that email exists, a reset link has been sent." });
+    } catch (error) {
+        console.error("Error sending reset email:", error);
+        next(error);
+    }
+});
+
+// Reset password - update password with token
+app.post("/api/auth/reset-password", async (req, res, next) => {
+    const { token, newPassword } = req.body;
+    try {
+        // Find user with this token that hasn't expired
+        const users = await prisma.$queryRawUnsafe(
+            `SELECT * FROM "User" WHERE "resetToken" = $1 AND "resetTokenExpiry" > NOW()`,
+            token
+        );
+
+        if (!users || users.length === 0) {
+            return res.status(400).json({ message: "Invalid or expired reset token." });
+        }
+
+        const user = users[0];
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update password and clear reset token
+        await prisma.$executeRawUnsafe(
+            `UPDATE "User" SET password = $1, "resetToken" = NULL, "resetTokenExpiry" = NULL WHERE id = $2`,
+            hashedPassword, user.id
+        );
+
+        res.status(200).json({ message: "Password reset successfully. You can now log in." });
+    } catch (error) {
+        console.error("Error resetting password:", error);
+        next(error);
+    }
+});
+
+
+
 // Token validation endpoint
 app.get("/api/auth/validate", verifyToken, async (req, res, next) => {
     try {
