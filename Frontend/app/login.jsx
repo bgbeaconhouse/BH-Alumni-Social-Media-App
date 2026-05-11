@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TouchableOpacity, TextInput, Alert, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Keyboard } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, TextInput, Alert, ScrollView, KeyboardAvoidingView, Platform, StatusBar, Keyboard, Image } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
@@ -69,7 +69,7 @@ const Login = () => {
             {
               text: 'OK',
               onPress: () => {
-                router.replace('/home');
+                router.replace('/(tabs)/post');
               },
             },
           ]);
@@ -99,125 +99,118 @@ const Login = () => {
     );
   }
 
-  return (
+ return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
     >
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-      
-      <ScrollView 
+
+      <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Back Button */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton}>
-            <Link href="/" style={styles.backLink}>
-              ← Back
-            </Link>
+        {/* Logo */}
+<View style={styles.logoSection}>
+  <Image
+    source={require('../assets/BH-App-Icon.png')}
+    style={styles.logo}
+    resizeMode="contain"
+  />
+</View>
+
+        {/* Form */}
+        <View style={styles.formSection}>
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Username"
+              placeholderTextColor="#aaaaaa"
+              value={formData.username}
+              onChangeText={(text) => handleChange('username', text)}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="next"
+              onSubmitEditing={() => passwordInputRef.current?.focus()}
+              blurOnSubmit={false}
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <View style={styles.passwordContainer}>
+              <TextInput
+                ref={passwordInputRef}
+                style={styles.passwordInput}
+                placeholder="Password"
+                placeholderTextColor="#aaaaaa"
+                secureTextEntry={!showPassword}
+                value={formData.password}
+                onChangeText={(text) => handleChange('password', text)}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="go"
+                onSubmitEditing={handleSubmit}
+              />
+              <TouchableOpacity
+                style={styles.eyeButton}
+                onPress={() => setShowPassword(!showPassword)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.eyeText}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Remember Me */}
+          <View style={styles.rememberMeContainer}>
+            <TouchableOpacity
+              style={styles.checkboxContainer}
+              onPress={() => setRememberMe(!rememberMe)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+                {rememberMe && <Text style={styles.checkmark}>✓</Text>}
+              </View>
+              <Text style={styles.checkboxLabel}>Remember me</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Sign In Button */}
+          <TouchableOpacity
+            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.loginButtonText}>
+              {loading ? 'Signing In...' : 'Sign In'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Forgot Password */}
+          <TouchableOpacity
+            style={styles.forgotPasswordButton}
+            onPress={() => {
+              Alert.alert(
+                'Forgot Password',
+                'To reset your password, please email us at:\n\nbgbeaconhouse@gmail.com\n\nInclude your username and we\'ll help you reset your password.',
+                [{ text: 'OK', style: 'default' }]
+              );
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.forgotPasswordText}>Forgot password?</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Main Content */}
-        <View style={styles.content}>
-          {/* Brand Section */}
-          <View style={styles.brandSection}>
-            <Text style={styles.logo}>BH</Text>
-            <Text style={styles.title}>Welcome Back</Text>
-          </View>
-
-          {/* Login Form */}
-          <View style={styles.formSection}>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Username"
-                placeholderTextColor="#bdc3c7"
-                value={formData.username}
-                onChangeText={(text) => handleChange('username', text)}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="next"
-                onSubmitEditing={() => {
-                  passwordInputRef.current?.focus();
-                }}
-                blurOnSubmit={false}
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <View style={styles.passwordContainer}>
-                <TextInput
-                  ref={passwordInputRef}
-                  style={styles.passwordInput}
-                  placeholder="Password"
-                  placeholderTextColor="#bdc3c7"
-                  secureTextEntry={!showPassword}
-                  value={formData.password}
-                  onChangeText={(text) => handleChange('password', text)}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="go"
-                  onSubmitEditing={handleSubmit}
-                />
-                <TouchableOpacity
-                  style={styles.eyeButton}
-                  onPress={() => setShowPassword(!showPassword)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.eyeText}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Remember Me Checkbox */}
-            <View style={styles.rememberMeContainer}>
-              <TouchableOpacity 
-                style={styles.checkboxContainer}
-                onPress={() => setRememberMe(!rememberMe)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
-                  {rememberMe && <Text style={styles.checkmark}>✓</Text>}
-                </View>
-                <Text style={styles.checkboxLabel}>Remember me</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity 
-              style={[styles.loginButton, loading && styles.loginButtonDisabled]} 
-              onPress={handleSubmit} 
-              disabled={loading}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.loginButtonText}>
-                {loading ? 'Signing In...' : 'Sign In'}
-              </Text>
+        {/* Bottom — Back to landing */}
+        <View style={styles.bottomSection}>
+          <Link href="/" asChild>
+            <TouchableOpacity style={styles.backButton}>
+              <Text style={styles.backText}>← Back</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.forgotPasswordButton}
-              onPress={() => {
-                Alert.alert(
-                  'Forgot Password',
-                  'To reset your password, please email us at:\n\nbgbeaconhouse@gmail.com\n\nInclude your username and we\'ll help you reset your password.',
-                  [
-                    { text: 'OK', style: 'default' }
-                  ]
-                );
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Beacon House • Est. 1974</Text>
+          </Link>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -230,6 +223,7 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     backgroundColor: '#ffffff',
+    justifyContent: 'space-between',
   },
   loadingContainer: {
     flex: 1,
@@ -241,85 +235,72 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#7f8c8d',
     fontWeight: '300',
-    letterSpacing: 0.5,
   },
-  header: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
-    paddingHorizontal: 30,
-    paddingBottom: 20,
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-  },
-  backLink: {
-    color: '#7f8c8d',
-    fontSize: 16,
-    fontWeight: '300',
-    letterSpacing: 0.5,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-  },
-  brandSection: {
+  logoSection: {
     alignItems: 'center',
-    marginBottom: 60,
+    paddingTop: 80,
+    marginBottom: 40,
   },
   logo: {
-    fontSize: 48,
-    fontWeight: '100',
-    color: '#2c3e50',
-    letterSpacing: 8,
+    width: 200,
+    height: 200,
     marginBottom: 16,
   },
-  title: {
-    fontSize: 24,
+  heading: {
+    fontSize: 32,
     fontWeight: '300',
-    color: '#2c3e50',
-    letterSpacing: 1,
+    color: '#1a3a5c',
+    letterSpacing: 2,
+    textAlign: 'center',
+  },
+  subheading: {
+    fontSize: 14,
+    fontWeight: '300',
+    color: '#1a3a5c',
+    letterSpacing: 3,
+    marginTop: 4,
+    textAlign: 'center',
   },
   formSection: {
-    width: '100%',
-    maxWidth: 280,
-    alignSelf: 'center',
+    paddingHorizontal: 40,
   },
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   input: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1',
-    paddingVertical: 16,
-    fontSize: 16,
+    backgroundColor: '#fafafa',
+    borderWidth: 1,
+    borderColor: '#dbdbdb',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
     color: '#2c3e50',
-    fontWeight: '300',
-    letterSpacing: 0.5,
   },
   passwordContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1',
+    backgroundColor: '#fafafa',
+    borderWidth: 1,
+    borderColor: '#dbdbdb',
+    borderRadius: 8,
+    paddingHorizontal: 16,
   },
   passwordInput: {
     flex: 1,
-    paddingVertical: 16,
-    fontSize: 16,
+    paddingVertical: 14,
+    fontSize: 15,
     color: '#2c3e50',
-    fontWeight: '300',
-    letterSpacing: 0.5,
   },
   eyeButton: {
-    paddingVertical: 16,
     paddingLeft: 10,
   },
   eyeText: {
     fontSize: 16,
-    color: '#bdc3c7',
   },
   rememberMeContainer: {
-    marginBottom: 30,
+    marginTop: 8,
+    marginBottom: 16,
   },
   checkboxContainer: {
     flexDirection: 'row',
@@ -336,8 +317,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   checkboxChecked: {
-    backgroundColor: '#2c3e50',
-    borderColor: '#2c3e50',
+    backgroundColor: '#3797EF',
+    borderColor: '#3797EF',
   },
   checkmark: {
     color: '#ffffff',
@@ -348,42 +329,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#7f8c8d',
     fontWeight: '300',
-    letterSpacing: 0.5,
   },
   loginButton: {
-    backgroundColor: '#2c3e50',
-    paddingVertical: 18,
+    backgroundColor: '#3797EF',
+    paddingVertical: 14,
     borderRadius: 8,
-    marginTop: 40,
-    marginBottom: 20,
     alignItems: 'center',
+    marginBottom: 16,
   },
   loginButtonDisabled: {
-    backgroundColor: '#bdc3c7',
+    backgroundColor: '#a8d4f7',
   },
   loginButtonText: {
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '500',
-    letterSpacing: 0.5,
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   forgotPasswordButton: {
     alignItems: 'center',
+    paddingVertical: 8,
   },
   forgotPasswordText: {
-    color: '#7f8c8d',
+    color: '#3797EF',
     fontSize: 14,
-    fontWeight: '300',
-    letterSpacing: 0.5,
+    fontWeight: '400',
   },
-  footer: {
+  bottomSection: {
     paddingBottom: 40,
     alignItems: 'center',
   },
-  footerText: {
-    fontSize: 12,
-    color: '#bdc3c7',
+  backButton: {
+    paddingVertical: 10,
+  },
+  backText: {
+    color: '#7f8c8d',
+    fontSize: 14,
     fontWeight: '300',
-    letterSpacing: 1,
   },
 });

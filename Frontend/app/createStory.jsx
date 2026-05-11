@@ -155,11 +155,10 @@ const CreateStory = () => {
             onPress={handleTakePhoto}
             disabled={isLoading}
           >
-            <View style={styles.optionContent}>
-              <Text style={styles.optionIcon}>📹</Text>
-              <Text style={styles.primaryOptionText}>Capture</Text>
-              <Text style={styles.optionDescription}>Take photo or record video</Text>
-            </View>
+        <View style={styles.optionContent}>
+  <Text style={styles.primaryOptionText}>Capture</Text>
+  <Text style={styles.optionDescription}>Take photo or record video</Text>
+</View>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -167,29 +166,19 @@ const CreateStory = () => {
             onPress={handleChooseFromGallery}
             disabled={isLoading}
           >
-            <View style={styles.optionContent}>
-              <Text style={styles.optionIcon}>🖼️</Text>
-              <Text style={styles.optionText}>Choose from Gallery</Text>
-              <Text style={styles.optionDescription}>Select photo or video</Text>
-            </View>
+      <View style={styles.optionContent}>
+  <Text style={styles.optionText}>Choose from Gallery</Text>
+<Text style={styles.optionDescriptionDark}>Select photo or video</Text>
+</View>
           </TouchableOpacity>
         </View>
 
-        {/* Guidelines */}
-        <View style={styles.guidelinesSection}>
-          <Text style={styles.guidelinesTitle}>Story Guidelines</Text>
-          <Text style={styles.guidelineText}>• Stories are visible for 24 hours</Text>
-          <Text style={styles.guidelineText}>• Share positive recovery moments</Text>
-          <Text style={styles.guidelineText}>• Respect community guidelines</Text>
-          {Platform.OS === 'android' && (
-            <Text style={styles.guidelineText}>• Android testing mode active</Text>
-          )}
-        </View>
+   
       </View>
 
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Beacon House • Connected in recovery</Text>
+     
       </View>
     </View>
   );
@@ -216,17 +205,17 @@ const styles = StyleSheet.create({
     minWidth: 60,
     alignItems: 'flex-start',
   },
-  backButtonText: {
-    color: '#7f8c8d',
-    fontSize: 16,
-    fontWeight: '300',
-    letterSpacing: 0.5,
+backButtonText: {
+    color: '#3797EF',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '100',
-    color: '#2c3e50',
-    letterSpacing: 2,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a3a5c',
+    letterSpacing: 0.5,
   },
   headerSpacer: {
     minWidth: 60,
@@ -242,19 +231,19 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 40,
   },
-  optionButton: {
+optionButton: {
     backgroundColor: 'transparent',
     paddingVertical: 24,
     paddingHorizontal: 20,
     borderRadius: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#ecf0f1',
+    borderColor: '#dbdbdb',
     alignItems: 'center',
   },
-  primaryOption: {
-    backgroundColor: '#2c3e50',
-    borderColor: '#2c3e50',
+primaryOption: {
+    backgroundColor: '#3797EF',
+    borderColor: '#3797EF',
   },
   optionContent: {
     alignItems: 'center',
@@ -270,14 +259,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 4,
   },
-  optionText: {
-    color: '#2c3e50',
+optionText: {
+    color: '#1a3a5c',
     fontSize: 18,
-    fontWeight: '300',
-    letterSpacing: 0.5,
+    fontWeight: '500',
+    letterSpacing: 0.3,
     marginBottom: 4,
   },
-  optionDescription: {
+optionDescription: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    fontWeight: '300',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  optionDescriptionDark: {
     color: '#7f8c8d',
     fontSize: 14,
     fontWeight: '300',

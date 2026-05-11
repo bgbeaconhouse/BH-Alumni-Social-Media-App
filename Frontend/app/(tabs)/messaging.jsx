@@ -1,10 +1,10 @@
-import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert, Platform, StatusBar } from 'react-native';
+import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert, Platform, StatusBar, Image } from 'react-native';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { Link, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { useNotifications } from '../hooks/useNotifications';
-import { useAuth } from '../hooks/useAuth';
+import { useNotifications } from '../../hooks/useNotifications';
+import { useAuth } from '../../hooks/useAuth';
 
 const Messaging = () => {
   const [conversations, setConversations] = useState([]);
@@ -272,10 +272,10 @@ const Messaging = () => {
   );
 
   // Handle conversation navigation with read marking
-  const handleConversationPress = (conversationId) => {
+const handleConversationPress = (conversationId, participantName) => {
     router.push({
       pathname: '/seeMessages',
-      params: { conversationId: conversationId },
+      params: { conversationId: conversationId, participantName: participantName },
     });
   };
 
@@ -294,10 +294,16 @@ const Messaging = () => {
           styles.conversationItem,
           hasUnreadMessages && styles.conversationItemUnread
         ]}
-        onPress={() => handleConversationPress(item.id)}
+        onPress={() => handleConversationPress(item.id, participantNames)}
       >
-        <View style={styles.conversationContent}>
-          <View style={styles.conversationHeader}>
+       <View style={styles.conversationContent}>
+  <View style={styles.conversationAvatar}>
+    <Text style={styles.conversationAvatarText}>
+      {participantNames.charAt(0).toUpperCase()}
+    </Text>
+  </View>
+  <View style={styles.conversationDetails}>
+  <View style={styles.conversationHeader}>
             <Text style={[
               styles.conversationName,
               hasUnreadMessages && styles.conversationNameUnread
@@ -323,7 +329,8 @@ const Messaging = () => {
           ) : (
             <Text style={styles.noMessage}>No messages yet</Text>
           )}
-        </View>
+     </View>
+  </View>
       </TouchableOpacity>
     );
   };
@@ -385,13 +392,13 @@ const Messaging = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerButton}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.push('/home')}>
-            <Text style={styles.headerButtonText}>← Home</Text>
-          </TouchableOpacity>
-        </View>
+{/* Header */}
+<View style={styles.header}>
+  <Image
+    source={require('../../assets/BH-App-Icon.png')}
+    style={styles.headerLogo}
+    resizeMode="contain"
+  />
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>Messages</Text>
           {/* Show total unread count badge */}
@@ -404,9 +411,9 @@ const Messaging = () => {
           )}
         </View>
         <View style={styles.headerButton}>
-          <TouchableOpacity style={styles.newButton} onPress={handleNewMessagePress}>
-            <Text style={styles.headerButtonText}>New</Text>
-          </TouchableOpacity>
+      <TouchableOpacity style={styles.newButton} onPress={handleNewMessagePress}>
+  <Text style={styles.newButtonText}>New</Text>
+</TouchableOpacity>
         </View>
       </View>
 
@@ -466,14 +473,18 @@ const styles = StyleSheet.create({
   backButton: {
     alignItems: 'flex-start',
   },
-  newButton: {
-    alignItems: 'flex-end',
+newButton: {
+    backgroundColor: '#3797EF',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    alignItems: 'center',
   },
   headerButtonText: {
-    color: '#7f8c8d',
-    fontSize: 16,
-    fontWeight: '300',
-    letterSpacing: 0.5,
+    color: '#3797EF',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   headerTitleContainer: {
     flex: 1,
@@ -584,7 +595,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   newMessageButton: {
-    backgroundColor: '#2c3e50',
+    backgroundColor: '#3797EF',
     paddingVertical: 18,
     paddingHorizontal: 32,
     borderRadius: 8,
@@ -596,8 +607,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   listContent: {
-    paddingHorizontal: 30,
-    paddingTop: 20,
+    paddingHorizontal: 0,
+    paddingTop: 0,
     paddingBottom: 40,
   },
   conversationItem: {
@@ -611,23 +622,41 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: '#3498db', // Blue accent line for unread conversations
   },
-  conversationContent: {
-    paddingVertical: 20,
+conversationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1',
+    borderBottomColor: '#dbdbdb',
     paddingHorizontal: 16,
+  },
+  conversationAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#1a3a5c',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  conversationAvatarText: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  conversationDetails: {
+    flex: 1,
   },
   conversationHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   conversationName: {
     fontSize: 16,
-    fontWeight: '300',
-    color: '#2c3e50',
-    letterSpacing: 0.5,
+    fontWeight: '500',
+    color: '#1a3a5c',
     flex: 1,
   },
   // NEW: Bold styling for unread conversations
@@ -679,5 +708,16 @@ const styles = StyleSheet.create({
     color: '#bdc3c7',
     fontWeight: '300',
     letterSpacing: 1,
+  },
+  headerLogo: {
+    width: 75,
+    height: 75, 
+    borderRadius: 8,
+  },
+  newButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });

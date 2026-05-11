@@ -118,7 +118,7 @@ const MessageItem = memo(({ item, currentUserId, onImagePress }) => {
 });
 
 const SeeMessages = () => {
-    const { conversationId } = useLocalSearchParams();
+    const { conversationId, participantName } = useLocalSearchParams();
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [loading, setLoading] = useState(true);
@@ -626,7 +626,7 @@ const SeeMessages = () => {
                 </View>
                 <View style={styles.spacer} />
                 <View style={styles.rightTitleContainer}>
-                    <Text style={styles.headerTitle}>Conversation</Text>
+                    <Text style={styles.headerTitle}>{participantName || 'Conversation'}</Text>
                 </View>
             </View>
 
@@ -756,19 +756,19 @@ const styles = StyleSheet.create({
         alignItems: 'flex-end',
         paddingRight: Platform.OS === 'ios' ? 0 : 10,
     },
-    headerButtonText: {
-        color: '#7f8c8d',
-        fontSize: 16,
-        fontWeight: '300',
-        letterSpacing: 0.5,
-    },
-    headerTitle: {
-        fontSize: 24,
-        fontWeight: '100',
-        color: '#2c3e50',
-        letterSpacing: 2,
-        paddingRight: 10,
-    },
+ headerButtonText: {
+    color: '#3797EF',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+  },
+ headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1a3a5c',
+    letterSpacing: 0.3,
+    paddingRight: 10,
+  },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -797,12 +797,12 @@ const styles = StyleSheet.create({
         marginBottom: 30,
         letterSpacing: 0.5,
     },
-    retryButton: {
-        backgroundColor: '#2c3e50',
-        paddingVertical: 16,
-        paddingHorizontal: 24,
-        borderRadius: 8,
-    },
+  retryButton: {
+    backgroundColor: '#3797EF',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
     retryButtonText: {
         color: '#ffffff',
         fontSize: 16,
@@ -833,18 +833,16 @@ const styles = StyleSheet.create({
         shadowRadius: 2,
         elevation: 1,
     },
-    sentMessage: {
-        backgroundColor: '#2c3e50',
-        alignSelf: 'flex-end',
-        borderBottomRightRadius: 4,
-    },
-    receivedMessage: {
-        backgroundColor: '#ffffff',
-        alignSelf: 'flex-start',
-        borderBottomLeftRadius: 4,
-        borderWidth: 1,
-        borderColor: '#ecf0f1',
-    },
+  sentMessage: {
+    backgroundColor: '#3797EF',
+    alignSelf: 'flex-end',
+    borderBottomRightRadius: 4,
+  },
+receivedMessage: {
+    backgroundColor: '#f0f0f0',
+    alignSelf: 'flex-start',
+    borderBottomLeftRadius: 4,
+  },
     senderName: {
         fontSize: 11,
         marginBottom: 4,
@@ -882,16 +880,16 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: '#ecf0f1',
     },
-    mediaButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#2c3e50',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-        marginBottom: 2,
-    },
+mediaButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#3797EF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    marginBottom: 2,
+  },
     mediaButtonDisabled: {
         backgroundColor: '#bdc3c7',
     },
@@ -904,30 +902,30 @@ const styles = StyleSheet.create({
     mediaButtonTextDisabled: {
         color: '#ecf0f1',
     },
-    input: {
-        flex: 1,
-        backgroundColor: '#f8f9fa',
-        borderRadius: 20,
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        fontSize: 16,
-        fontWeight: '300',
-        color: '#2c3e50',
-        letterSpacing: 0.3,
-        maxHeight: 100,
-        borderWidth: 1,
-        borderColor: '#ecf0f1',
-    },
-    sendButton: {
-        backgroundColor: '#2c3e50',
-        borderRadius: 20,
-        paddingVertical: 12,
-        paddingHorizontal: 20,
-        marginLeft: 12,
-        marginBottom: 2,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
+ input: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#1a3a5c',
+    letterSpacing: 0.3,
+    maxHeight: 100,
+    borderWidth: 1,
+    borderColor: '#dbdbdb',
+  },
+ sendButton: {
+    backgroundColor: '#3797EF',
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginLeft: 12,
+    marginBottom: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
     sendButtonDisabled: {
         backgroundColor: '#ecf0f1',
     },

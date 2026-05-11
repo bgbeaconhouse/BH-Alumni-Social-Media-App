@@ -4,7 +4,7 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { Link, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNotifications } from '../hooks/useNotifications';
+import { useNotifications } from '../../hooks/useNotifications';
 
 
 
@@ -12,7 +12,8 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 // Optimized Image Component with Progressive Loading
 const OptimizedImage = React.memo(({ imageUrl, style, onPress, showMultipleIndicator, count }) => {
-  const [imageLoaded, setImageLoaded] = useState(false);
+ const [imageLoaded, setImageLoaded] = useState(false);
+const [imageDimensions, setImageDimensions] = useState({ width: 1, height: 1 });
   
   const getImageUrl = () => {
     const baseUrl = 'https://bh-alumni-social-media-app.onrender.com/uploads/';
@@ -41,7 +42,10 @@ const OptimizedImage = React.memo(({ imageUrl, style, onPress, showMultipleIndic
   };
 
   return (
-    <TouchableOpacity onPress={onPress} style={styles.imageContainer}>
+   <TouchableOpacity onPress={onPress} style={[
+  styles.imageContainer,
+  { aspectRatio: imageDimensions.width / imageDimensions.height }
+]}>
       {/* Loading indicator */}
       {!imageLoaded && (
         <View style={styles.imagePlaceholder}>
@@ -57,7 +61,11 @@ const OptimizedImage = React.memo(({ imageUrl, style, onPress, showMultipleIndic
         }}
         style={[styles.postImage, { opacity: imageLoaded ? 1 : 0 }]}
         resizeMode="contain"
-        onLoad={() => setImageLoaded(true)}
+       onLoad={(e) => {
+        setImageLoaded(true);
+         const { width, height } = e.nativeEvent.source;
+          setImageDimensions({ width, height });
+}} 
         onError={(error) => {
           console.log('Image load error:', error);
           setImageLoaded(true); // Show even if error to prevent infinite loading
@@ -566,10 +574,20 @@ const Post = () => {
 
     return (
       <View style={styles.postItem}>
-        <View style={styles.postHeader}>
-          <Text style={styles.authorName}>
-            {item.author ? `${item.author.firstName} ${item.author.lastName || ''}` : 'Unknown Author'}
-          </Text>
+    <View style={styles.postHeader}>
+<TouchableOpacity 
+  style={styles.authorInfo}
+  onPress={() => router.push({ pathname: '/userProfile', params: { userId: item.author?.id } })}
+>
+  <View style={styles.avatar}>
+    <Text style={styles.avatarText}>
+      {item.author ? item.author.firstName.charAt(0).toUpperCase() : '?'}
+    </Text>
+  </View>
+  <Text style={styles.authorName}>
+    {item.author ? `${item.author.firstName} ${item.author.lastName || ''}` : 'Unknown Author'}
+  </Text>
+</TouchableOpacity>
           {isOwnPost && (
             <TouchableOpacity
               onPress={() => handleDeletePost(item.id)}
@@ -585,10 +603,8 @@ const Post = () => {
           )}
         </View>
         
-        {item.content && <Text style={styles.postContent}>{item.content}</Text>}
-        
-        {imageAttachments.length > 0 && (
-          <OptimizedImage
+    {imageAttachments.length > 0 && (
+  <OptimizedImage
             imageUrl={imageAttachments[0].url || imageAttachments[0]}
             style={styles.postImage}
             onPress={() => openImageModal(imageAttachments)}
@@ -597,37 +613,41 @@ const Post = () => {
           />
         )}
         
-        {videoAttachments.length > 0 && (
-          <PostVideo
-            videoUrl={`https://bh-alumni-social-media-app.onrender.com/uploads/${videoAttachments[0].url}`}
-            thumbnailUrl={videoAttachments[0].thumbnailUrl ? `https://bh-alumni-social-media-app.onrender.com/uploads/${videoAttachments[0].thumbnailUrl}` : null}
-          />
-        )}
-        
-        <View style={styles.interactions}>
-          <TouchableOpacity
-            style={[styles.interactionButton, isLikedByUser && styles.likedButton]}
-            onPress={() => handleLike(item.id)}
-          >
-            <Text style={[styles.interactionText, isLikedByUser && styles.likedText]}>
-              ♡ {likeCount}
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.interactionButton}
-            onPress={() =>
-              setShowComments((prevShowComments) => ({
-                ...prevShowComments,
-                [item.id]: !prevShowComments[item.id],
-              }))
-            }
-          >
-            <Text style={styles.interactionText}>
-              {postComments.length} {postComments.length === 1 ? 'comment' : 'comments'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+{videoAttachments.length > 0 && (
+  <PostVideo
+    videoUrl={`https://bh-alumni-social-media-app.onrender.com/uploads/${videoAttachments[0].url}`}
+    thumbnailUrl={videoAttachments[0].thumbnailUrl ? `https://bh-alumni-social-media-app.onrender.com/uploads/${videoAttachments[0].thumbnailUrl}` : null}
+  />
+)}
+
+<View style={styles.interactions}>
+  <TouchableOpacity
+    style={styles.interactionButton}
+    onPress={() => handleLike(item.id)}
+  >
+    <Text style={[styles.interactionIcon, isLikedByUser && styles.likedIcon]}>
+      {isLikedByUser ? '❤️' : '🤍'}
+    </Text>
+    <Text style={[styles.interactionCount, isLikedByUser && styles.likedText]}>
+      {likeCount}
+    </Text>
+  </TouchableOpacity>
+  
+  <TouchableOpacity
+    style={styles.interactionButton}
+    onPress={() =>
+      setShowComments((prevShowComments) => ({
+        ...prevShowComments,
+        [item.id]: !prevShowComments[item.id],
+      }))
+    }
+  >
+    <Text style={styles.interactionIcon}>💬</Text>
+    <Text style={styles.interactionCount}>{postComments.length}</Text>
+  </TouchableOpacity>
+</View>
+
+{item.content && <Text style={styles.postContent}>{item.content}</Text>}
 
         {isCommentsVisible && (
           <View style={styles.commentsSection}>
@@ -733,18 +753,18 @@ const Post = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerButton}>
-          <Link href="/home" style={styles.headerButtonText}>
-            ← Home
-          </Link>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Posts</Text>
-        <TouchableOpacity style={styles.headerButton} onPress={() => router.push('/support')}>
-          <Text style={styles.headerButtonText}>Support</Text>
-        </TouchableOpacity>
-      </View>
+{/* Header */}
+<View style={styles.header}>
+  <Image
+    source={require('../../assets/BH-App-Icon.png')}
+    style={styles.headerLogo}
+    resizeMode="contain"
+  />
+  <Text style={styles.headerTitle}>Posts</Text>
+  <TouchableOpacity style={styles.headerButton} onPress={() => router.push('/support')}>
+    <Text style={styles.headerButtonText}>Support</Text>
+  </TouchableOpacity>
+</View>
 
       <FlatList
         data={posts}
@@ -835,7 +855,7 @@ const Post = () => {
 export default Post;
 
 const styles = StyleSheet.create({
-  container: {
+container: {
     flex: 1,
     backgroundColor: '#ffffff',
   },
@@ -844,29 +864,30 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: 50,
-    paddingHorizontal: 30,
-    paddingBottom: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1',
+    borderBottomColor: '#dbdbdb',
+    backgroundColor: '#ffffff',
   },
   headerButton: {
     minWidth: 60,
   },
   headerButtonText: {
-    color: '#7f8c8d',
-    fontSize: 16,
-    fontWeight: '300',
-    letterSpacing: 0.5,
+    color: '#3797EF',
+    fontSize: 14,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '100',
-    color: '#2c3e50',
-    letterSpacing: 2,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a3a5c',
+    letterSpacing: 0.5,
   },
-  listContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
+listContainer: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   loadingContainer: {
     flex: 1,
@@ -910,24 +931,28 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     fontWeight: '300',
   },
-  postItem: {
+postItem: {
     backgroundColor: '#ffffff',
-    marginBottom: 24,
+    marginBottom: 8,
+    marginHorizontal: 0,
     borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1',
-    paddingBottom: 20,
+    borderBottomColor: '#dbdbdb',
+    paddingBottom: 8,
+    paddingHorizontal: 0,
   },
-  postHeader: {
+postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
+    marginTop: 12,
+    paddingHorizontal: 12,
   },
-  authorName: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    fontWeight: '300',
-    letterSpacing: 0.5,
+authorName: {
+    fontSize: 15,
+    color: '#1a3a5c',
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   deletePostButton: {
     width: 24,
@@ -940,25 +965,29 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '300',
   },
-  postContent: {
-    fontSize: 16,
-    color: '#2c3e50',
-    lineHeight: 24,
-    marginBottom: 16,
-    fontWeight: '300',
+postContent: {
+    fontSize: 15,
+    color: '#1a3a5c',
+    lineHeight: 22,
+    marginTop: 8,
+    marginBottom: 8,
+    fontWeight: '400',
+    paddingHorizontal: 12,
   },
   // Optimized image styles
-  imageContainer: {
-    width: '100%',
-    aspectRatio: 1.25,
-    borderRadius: 12,
-    marginBottom: 16,
+imageContainer: {
+    aspectRatio: 4/5,
+    borderRadius: 0,
+    marginBottom: 0,
+    marginLeft: -13,
+    marginRight: -13,
     overflow: 'hidden',
     position: 'relative',
   },
-  postImage: {
+postImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   thumbnailImage: {
     position: 'absolute',
@@ -1032,22 +1061,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '300',
   },
-  interactions: {
+interactions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 4,
   },
   interactionButton: {
-    marginRight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 20,
   },
-  interactionText: {
+  interactionIcon: {
+    fontSize: 22,
+    marginRight: 4,
+  },
+  interactionCount: {
     fontSize: 14,
-    color: '#7f8c8d',
-    fontWeight: '300',
-    letterSpacing: 0.5,
+    color: '#1a3a5c',
+    fontWeight: '500',
   },
-  likedButton: {
-    // Keep same styling, just different text color
+  likedIcon: {
+    // emoji handles the color change
   },
   likedText: {
     color: '#e74c3c',
@@ -1131,43 +1167,43 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ecf0f1',
   },
-  guidelinesHeader: {
+guidelinesHeader: {
     fontSize: 16,
-    fontWeight: '300',
-    color: '#2c3e50',
+    fontWeight: '600',
+    color: '#1a3a5c',
     marginBottom: 12,
     textAlign: 'center',
     letterSpacing: 1,
   },
-  guidelineItem: {
+guidelineItem: {
     fontSize: 14,
-    color: '#7f8c8d',
-    fontWeight: '300',
+    color: '#3797EF',
+    fontWeight: '400',
     marginBottom: 4,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
-  createPostButton: {
+createPostButton: {
     position: 'absolute',
     bottom: 30,
-    right: 30,
-    backgroundColor: '#2c3e50',
-    paddingVertical: 16,
+    right: 20,
+    backgroundColor: '#3797EF',
+    paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 8,
-    shadowColor: '#2c3e50',
+    borderRadius: 24,
+    shadowColor: '#3797EF',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 4,
   },
   createPostButtonText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '300',
-    letterSpacing: 0.5,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   modalContainer: {
     flex: 1,
@@ -1216,5 +1252,28 @@ const styles = StyleSheet.create({
   modalImage: {
     width: screenWidth * 0.95,
     height: screenHeight * 0.7,
+  },
+  headerLogo: {
+  width: 75,
+  height: 75,
+  borderRadius: 8,
+},
+authorInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1a3a5c',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  avatarText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

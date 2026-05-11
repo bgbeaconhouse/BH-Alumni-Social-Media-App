@@ -123,22 +123,23 @@ const Stories = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.push('/home')}>
-          <Text style={styles.backButtonText}>← Home</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Stories</Text>
-        <TouchableOpacity style={styles.addButton} onPress={() => router.push('/createStory')}>
-          <Text style={styles.addButtonText}>+ Add</Text>
-        </TouchableOpacity>
-      </View>
+{/* Header */}
+<View style={styles.header}>
+  <Image
+    source={require('../../assets/BH-App-Icon.png')}
+    style={styles.headerLogo}
+    resizeMode="contain"
+  />
+  <Text style={styles.headerTitle}>Stories</Text>
+  <TouchableOpacity style={styles.addButton} onPress={() => router.push('/createStory')}>
+    <Text style={styles.addButtonText}>+ Add</Text>
+  </TouchableOpacity>
+</View>
 
       {stories.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <View style={styles.emptyContent}>
-            <Text style={styles.logo}>BH</Text>
-            <Text style={styles.emptyTitle}>No Stories Yet</Text>
+         <View style={styles.emptyContent}>
+  <Text style={styles.emptyTitle}>No Stories Yet</Text>
             <Text style={styles.emptySubtitle}>Be the first to share a story</Text>
             <TouchableOpacity style={styles.createStoryButton} onPress={() => router.push('/createStory')}>
               <Text style={styles.createStoryButtonText}>Create Story</Text>
@@ -187,21 +188,24 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     letterSpacing: 0.5,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '100',
-    color: '#2c3e50',
-    letterSpacing: 2,
+headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a3a5c',
+    letterSpacing: 0.5,
   },
-  addButton: {
-    minWidth: 60,
-    alignItems: 'flex-end',
+addButton: {
+    backgroundColor: '#3797EF',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    alignItems: 'center',
   },
   addButtonText: {
-    color: '#7f8c8d',
-    fontSize: 16,
-    fontWeight: '300',
-    letterSpacing: 0.5,
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   loadingContainer: {
     flex: 1,
@@ -274,11 +278,11 @@ const styles = StyleSheet.create({
     marginBottom: 40,
     letterSpacing: 0.5,
   },
-  createStoryButton: {
-    backgroundColor: '#2c3e50',
-    paddingVertical: 18,
+ createStoryButton: {
+    backgroundColor: '#3797EF',
+    paddingVertical: 14,
     paddingHorizontal: 32,
-    borderRadius: 8,
+    borderRadius: 24,
   },
   createStoryButtonText: {
     color: '#ffffff',
@@ -296,16 +300,16 @@ const styles = StyleSheet.create({
     width: '48%',
     marginBottom: 16,
   },
-  storyContainer: {
+storyContainer: {
     borderRadius: 12,
     overflow: 'hidden',
-    aspectRatio: 9/16, // Instagram story aspect ratio
+    aspectRatio: 9/16,
     backgroundColor: '#f8f9fa',
-    borderWidth: 2,
-    borderColor: '#ecf0f1',
+    borderWidth: 3,
+    borderColor: '#dbdbdb',
   },
-  unviewedStory: {
-    borderColor: '#e74c3c',
+unviewedStory: {
+    borderColor: '#3797EF',
     borderWidth: 3,
   },
   storyImage: {
@@ -333,4 +337,9 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     letterSpacing: 0.5,
   },
+  headerLogo: {
+    width: 75,
+    height: 75,
+    borderRadius: 8,
+  }
 });

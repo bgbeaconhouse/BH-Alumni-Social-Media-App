@@ -126,11 +126,9 @@ const CreatePosts = () => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Brand Section */}
-        <View style={styles.brandSection}>
-          <Text style={styles.logo}>BH</Text>
-          <Text style={styles.title}>New Post</Text>
-          <Text style={styles.subtitle}>Share with your community</Text>
-        </View>
+<View style={styles.brandSection}>
+  <Text style={styles.title}>New Post</Text>
+</View>
 
         {/* Form Section */}
         <View style={styles.formSection}>
@@ -195,7 +193,7 @@ const CreatePosts = () => {
 
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Beacon House • Connected in recovery</Text>
+    
       </View>
     </View>
   );
@@ -259,34 +257,36 @@ const styles = StyleSheet.create({
   inputContainer: {
     marginBottom: 30,
   },
-  input: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1',
-    paddingVertical: 20,
-    fontSize: 16,
-    color: '#2c3e50',
-    fontWeight: '300',
-    letterSpacing: 0.5,
+input: {
+    backgroundColor: '#fafafa',
+    borderWidth: 1,
+    borderColor: '#dbdbdb',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    fontSize: 15,
+    color: '#1a3a5c',
+    fontWeight: '400',
     minHeight: 120,
     textAlignVertical: 'top',
   },
-  mediaButton: {
+mediaButton: {
     backgroundColor: 'transparent',
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderRadius: 8,
     alignItems: 'center',
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#ecf0f1',
+    borderColor: '#dbdbdb',
   },
   disabledButton: {
     opacity: 0.6,
   },
-  mediaButtonText: {
-    color: '#7f8c8d',
-    fontSize: 16,
-    fontWeight: '300',
-    letterSpacing: 0.5,
+mediaButtonText: {
+    color: '#3797EF',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -328,9 +328,9 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     letterSpacing: 0.5,
   },
-  submitButton: {
-    backgroundColor: '#2c3e50',
-    paddingVertical: 18,
+submitButton: {
+    backgroundColor: '#3797EF',
+    paddingVertical: 14,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 20,

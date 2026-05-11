@@ -279,6 +279,53 @@ const posts = await prisma.post.findMany({
     }
 });
 
+
+// GET a single post by ID
+router.get("/:postId", verifyToken, async (req, res, next) => {
+    const { postId } = req.params;
+    try {
+        const post = await prisma.post.findUnique({
+            where: { id: parseInt(postId) },
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        username: true,
+                    },
+                },
+                likes: true,
+                comments: {
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                username: true,
+                                firstName: true,
+                                lastName: true,
+                            },
+                        },
+                    },
+                    orderBy: { createdAt: 'asc' },
+                },
+                imageAttachments: true,
+                videoAttachments: true,
+            },
+        });
+
+        if (!post) {
+            return res.status(404).json({ error: "Post not found." });
+        }
+
+        res.status(200).json(post);
+    } catch (error) {
+        console.error("Error fetching post:", error);
+        next(error);
+    }
+});
+
+
 // GET comments for a specific post with pagination
 router.get("/:postId/comments", async (req, res, next) => {
     const { postId } = req.params;
