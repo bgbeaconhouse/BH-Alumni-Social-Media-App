@@ -322,7 +322,7 @@ app.post("/api/auth/forgot-password", async (req, res, next) => {
         );
 
         // Send reset email
-        const resetLink = `continuum://reset-password?token=${resetToken}`;
+     const resetLink = `alumniapp://reset-password?token=${resetToken}`;
         const mailOptions = {
             from: process.env.EMAIL_USER,
             to: email,
@@ -336,8 +336,15 @@ app.post("/api/auth/forgot-password", async (req, res, next) => {
             `,
         };
 
-        await transporter.sendMail(mailOptions);
-        res.status(200).json({ message: "If that email exists, a reset link has been sent." });
+        transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+        console.error('Error sending reset email:', error);
+        return next(error);
+    }
+    console.log('Reset email sent:', info.response);
+    res.status(200).json({ message: "If that email exists, a reset link has been sent." });
+});
+return;
     } catch (error) {
         console.error("Error sending reset email:", error);
         next(error);
