@@ -189,19 +189,13 @@ const Login = () => {
           </TouchableOpacity>
 
           {/* Forgot Password */}
-          <TouchableOpacity
-            style={styles.forgotPasswordButton}
-            onPress={() => {
-              Alert.alert(
-                'Forgot Password',
-                'To reset your password, please email us at:\n\nbgbeaconhouse@gmail.com\n\nInclude your username and we\'ll help you reset your password.',
-                [{ text: 'OK', style: 'default' }]
-              );
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.forgotPasswordText}>Forgot password?</Text>
-          </TouchableOpacity>
+  <TouchableOpacity
+  style={styles.forgotPasswordButton}
+  onPress={() => router.push('/forgotPassword')}
+  activeOpacity={0.7}
+>
+  <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+</TouchableOpacity>
         </View>
 
         {/* Bottom — Back to landing */}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet, Text, View, FlatList, Image,
-  TouchableOpacity, ActivityIndicator, StatusBar, Dimensions
+  TouchableOpacity, ActivityIndicator, StatusBar, Dimensions, Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../hooks/useAuth';
@@ -11,7 +11,7 @@ const { width } = Dimensions.get('window');
 const GRID_SIZE = (width - 3) / 3;
 
 const Profile = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -98,16 +98,25 @@ const renderGridItem = ({ item }) => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Image
-          source={require('../../assets/BH-App-Icon.png')}
-          style={styles.headerLogo}
-          resizeMode="contain"
-        />
-        <Text style={styles.headerTitle}>Profile</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+     {/* Header */}
+<View style={styles.header}>
+  <Image
+    source={require('../../assets/BH-App-Icon.png')}
+    style={styles.headerLogo}
+    resizeMode="contain"
+  />
+  <Text style={styles.headerTitle}>Profile</Text>
+  <TouchableOpacity onPress={() => Alert.alert(
+    'Logout',
+    'Are you sure you want to log out?',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Logout', style: 'destructive', onPress: () => logout(false) }
+    ]
+  )}>
+    <Text style={styles.logoutButton}>Logout</Text>
+  </TouchableOpacity>
+</View>
 
       {/* Profile Info */}
       <View style={styles.profileSection}>
@@ -270,4 +279,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 10,
   },
+  logoutButton: {
+  color: '#3797EF',
+  fontSize: 15,
+  fontWeight: '500',
+},
 });

@@ -83,38 +83,35 @@ const [imageDimensions, setImageDimensions] = useState({ width: 1, height: 1 });
   );
 });
 
-const PostVideo = React.memo(({ videoUrl, thumbnailUrl }) => {
-  const [modalVisible, setModalVisible] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  
+const VideoModal = ({ videoUrl, onClose }) => {
   const player = useVideoPlayer(videoUrl, (player) => {
     player.loop = false;
     player.muted = false;
+    player.play();
   });
 
-  useEffect(() => {
-    const subscription = player.addListener('playingChange', (isPlaying) => {
-      setIsPlaying(isPlaying);
-    });
+  return (
+    <View style={styles.modalContainer}>
+      <VideoView
+        style={styles.modalVideo}
+        player={player}
+        allowsFullscreen
+        allowsPictureInPicture
+        nativeControls
+      />
+      <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+        <Text style={styles.closeButtonText}>Close</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
 
-    return () => {
-      subscription?.remove();
-    };
-  }, [player]);
-
-  const openModal = () => {
-    setModalVisible(true);
-    player.play();
-  };
-
-  const closeModal = () => {
-    setModalVisible(false);
-    player.pause();
-  };
+const PostVideo = React.memo(({ videoUrl, thumbnailUrl }) => {
+  const [modalVisible, setModalVisible] = useState(false);
 
   return (
     <View>
-      <TouchableOpacity onPress={openModal} style={styles.videoPlaceholder}>
+      <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.videoPlaceholder}>
         {thumbnailUrl ? (
           <Image source={{ uri: thumbnailUrl }} style={styles.thumbnail} resizeMode="cover" />
         ) : (
@@ -129,20 +126,14 @@ const PostVideo = React.memo(({ videoUrl, thumbnailUrl }) => {
         animationType="slide"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={closeModal}
+        onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <VideoView
-            style={styles.modalVideo}
-            player={player}
-            allowsFullscreen
-            allowsPictureInPicture
-            nativeControls
+        {modalVisible && (
+          <VideoModal
+            videoUrl={videoUrl}
+            onClose={() => setModalVisible(false)}
           />
-          <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
-            <Text style={styles.closeButtonText}>Close</Text>
-          </TouchableOpacity>
-        </View>
+        )}
       </Modal>
     </View>
   );
