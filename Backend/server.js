@@ -306,7 +306,11 @@ app.post("/api/auth/forgot-password", async (req, res, next) => {
     console.log('🔑 Forgot password route hit for email:', req.body.email);
     const { email } = req.body;
     try {
-        const user = await prisma.user.findFirst({ where: { email } });
+        const user = await prisma.user.findFirst({ 
+    where: { 
+        email: { equals: email, mode: 'insensitive' }
+    } 
+});
         if (!user) {
             // Don't reveal if email exists or not for security
             return res.status(200).json({ message: "If that email exists, a reset link has been sent." });
