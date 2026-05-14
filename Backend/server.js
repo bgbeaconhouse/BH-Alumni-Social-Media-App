@@ -300,6 +300,46 @@ app.post("/api/admin/approve/:userId", verifyToken, async (req, res, next) => {
     }
 });
 
+// Reset password redirect - opens app via deep link
+app.get("/reset-password", (req, res) => {
+    const { token } = req.query;
+    if (!token) {
+        return res.status(400).send('Invalid reset link.');
+    }
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Reset Password - Beacon House Alumni</title>
+            <style>
+                body { font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f0f4f8; }
+                .container { text-align: center; padding: 40px; background: white; border-radius: 16px; max-width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+                img { width: 80px; height: 80px; margin-bottom: 20px; }
+                h1 { color: #1a3a5c; font-size: 24px; margin-bottom: 8px; }
+                p { color: #7f8c8d; font-size: 14px; line-height: 22px; }
+                .button { display: inline-block; background: #3797EF; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 20px; }
+            </style>
+            <script>
+                window.onload = function() {
+                    window.location.href = 'alumniapp://reset-password?token=${token}';
+                }
+            </script>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Beacon House Alumni</h1>
+                <p>Tap the button below to reset your password in the app.</p>
+                <a href="alumniapp://reset-password?token=${token}" class="button">Reset Password</a>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
+
+
 
 // Forgot password - send reset email
 app.post("/api/auth/forgot-password", async (req, res, next) => {
@@ -327,18 +367,18 @@ app.post("/api/auth/forgot-password", async (req, res, next) => {
         );
 
         // Send reset email
-     const resetLink = `alumniapp://reset-password?token=${resetToken}`;
+   const resetLink = `https://bh-alumni-social-media-app.onrender.com/reset-password?token=${resetToken}`;
         const mailOptions = {
             from: process.env.EMAIL_USER,
             to: email,
-            subject: 'Reset Your Continuum Password',
+             subject: 'Reset Your Beacon House Alumni Password',
             html: `
                 <p>Hello ${user.firstName},</p>
-                <p>You requested a password reset for your Continuum account.</p>
+                <p>You requested a password reset for your Beacon House Alumni account.</p>
                 <p>Tap the link below to reset your password. This link expires in 1 hour.</p>
                 <a href="${resetLink}" style="background-color:#3797EF;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;display:inline-block;">Reset Password</a>
                 <p>If you didn't request this, you can safely ignore this email.</p>
-            `,
+`,
         };
 
         transporter.sendMail(mailOptions, (error, info) => {
