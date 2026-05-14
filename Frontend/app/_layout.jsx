@@ -1,6 +1,25 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
+import { useEffect } from 'react';
 
 export default function RootLayout() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleDeepLink = (event) => {
+      const url = event.url;
+      if (url.includes('reset-password')) {
+        const token = url.split('token=')[1];
+        if (token) {
+          router.push({ pathname: '/resetPassword', params: { token } });
+        }
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+    return () => subscription.remove();
+  }, []);
+
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
