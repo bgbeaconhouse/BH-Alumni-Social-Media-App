@@ -340,6 +340,7 @@ app.get("/reset-password", (req, res) => {
 
 // Delete account info page
 app.get("/delete-account", (req, res) => {
+    const adminEmail = process.env.ADMIN_EMAIL || 'support@beaconhouse.org';
     res.send(`
         <!DOCTYPE html>
         <html>
@@ -360,7 +361,7 @@ app.get("/delete-account", (req, res) => {
                 <h1>Beacon House Alumni</h1>
                 <h2 style="color:#1a3a5c;">Delete Your Account</h2>
                 <p>To request deletion of your Beacon House Alumni account and all associated data, please email us at:</p>
-                <p><a href="mailto:${process.env.ADMIN_EMAIL}">${process.env.ADMIN_EMAIL}</a></p>
+                <p><a href="mailto:${adminEmail}">${adminEmail}</a></p>
                 <p>We will process your request within 30 days. All your posts, messages, and profile data will be permanently deleted.</p>
             </div>
         </body>
