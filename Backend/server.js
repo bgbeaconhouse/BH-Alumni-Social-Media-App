@@ -338,7 +338,35 @@ app.get("/reset-password", (req, res) => {
     `);
 });
 
-
+// Delete account info page
+app.get("/delete-account", (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Delete Account - Beacon House Alumni</title>
+            <style>
+                body { font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f0f4f8; }
+                .container { text-align: center; padding: 40px; background: white; border-radius: 16px; max-width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+                h1 { color: #1a3a5c; font-size: 24px; margin-bottom: 8px; }
+                p { color: #7f8c8d; font-size: 14px; line-height: 22px; }
+                a { color: #3797EF; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Beacon House Alumni</h1>
+                <h2 style="color:#1a3a5c;">Delete Your Account</h2>
+                <p>To request deletion of your Beacon House Alumni account and all associated data, please email us at:</p>
+                <p><a href="mailto:${process.env.ADMIN_EMAIL}">${process.env.ADMIN_EMAIL}</a></p>
+                <p>We will process your request within 30 days. All your posts, messages, and profile data will be permanently deleted.</p>
+            </div>
+        </body>
+        </html>
+    `);
+});
 
 
 // Forgot password - send reset email
