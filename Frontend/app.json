@@ -26,7 +26,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/BH-App-Icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
