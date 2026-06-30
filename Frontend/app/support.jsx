@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TouchableOpacity, StatusBar, Alert } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, StatusBar, Alert, Linking } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import React from 'react';
 import * as SecureStore from 'expo-secure-store';
@@ -129,8 +129,16 @@ const Support = () => {
             style={styles.deleteButton} 
             onPress={handleDeleteAccount}
           >
-            <Text style={styles.deleteButtonText}>Delete My Account</Text>
+           <Text style={styles.deleteButtonText}>Delete My Account</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.privacyButton} 
+            onPress={() => Linking.openURL('https://sites.google.com/view/beacon-house-alumni/home')}
+          >
+            <Text style={styles.privacyText}>Privacy Policy</Text>
+          </TouchableOpacity>
+
         </View>
       </View>
 
