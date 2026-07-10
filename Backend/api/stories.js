@@ -6,6 +6,7 @@ const verifyToken = require("../verify");
 const path = require('path');
 const fs = require('fs').promises;
 const sharp = require('sharp');
+const ffmpeg = require('fluent-ffmpeg');
 
 // Configure Multer for disk storage (same as posts)
 const storage = multer.diskStorage({
@@ -87,16 +88,17 @@ router.get("/", verifyToken, async (req, res, next) => {
         });
 
         // Format stories for frontend
-        const formattedStories = stories.map(story => ({
+      const formattedStories = stories.map(story => ({
             id: story.id,
             userId: story.userId,
             userName: `${story.user.firstName} ${story.user.lastName}`,
             userAvatar: story.user.profilePictureUrl,
             mediaUrl: `/uploads/${story.mediaUrl}`,
             mediaType: story.mediaType.toLowerCase(),
+            thumbnailUrl: story.thumbnailUrl ? `/uploads/${story.thumbnailUrl}` : null,
             createdAt: story.createdAt,
             expiresAt: story.expiresAt,
-            viewed: story.views.length > 0, // Has current user viewed this story
+            viewed: story.views.length > 0,
             viewCount: story._count.views,
             isOwnStory: story.userId === currentUserId
         }));
@@ -114,7 +116,7 @@ router.get("/", verifyToken, async (req, res, next) => {
 
 // POST - Create a new story
 router.post("/", verifyToken, (req, res, next) => {
-    upload(req, res, (err) => {
+    upload(req, res, async (err) => {
         if (err) {
             console.error('❌ Multer upload error:', err);
             return res.status(400).json({ error: `Upload error: ${err.message}` });
@@ -130,88 +132,75 @@ router.post("/", verifyToken, (req, res, next) => {
         } : 'No file');
 
         const userId = req.userId;
-        
-        // FIXED: Check req.files (array) instead of req.file (single)
         const files = req.files;
-        
+
         if (!files || files.length === 0) {
             console.log('❌ No files received in request');
             return res.status(400).json({ error: "Media file is required for stories." });
         }
 
-        const file = files[0]; // Get first file from array
-
+        const file = files[0];
         console.log('📁 Processing uploaded file:', file.filename);
 
-        // Determine media type
         const fileExtension = path.extname(file.originalname).toLowerCase();
         let mediaType;
-        
+        let thumbnailFilename = null;
+
         if (['.jpg', '.jpeg', '.png', '.gif'].includes(fileExtension)) {
             mediaType = 'IMAGE';
-            
-            // Optional: Optimize image for stories (vertical format)
-            try {
-                const optimizedFilename = `optimized-${file.filename}`;
-                const optimizedFilePath = path.join('/mnt/disks/uploads/optimized/', optimizedFilename);
-                
-                // Uncomment if you want image optimization
-                /*
-                await sharp(file.path)
-                    .resize({ 
-                        width: 1080, 
-                        height: 1920, 
-                        fit: 'inside',
-                        withoutEnlargement: true 
-                    })
-                    .jpeg({ 
-                        quality: 85,
-                        progressive: true
-                    })
-                    .toFile(optimizedFilePath);
-                */
-
-                console.log('🖼️ Image ready for story format');
-            } catch (optimizationError) {
-                console.error("Story image optimization failed:", optimizationError);
-            }
-            
+            console.log('🖼️ Image ready for story format');
         } else if (['.mp4', '.mpeg', '.mov'].includes(fileExtension)) {
             mediaType = 'VIDEO';
-            // TODO: Add video compression if needed
+            try {
+                thumbnailFilename = `thumb-${file.filename}.jpg`;
+                await new Promise((resolve, reject) => {
+                    ffmpeg(file.path)
+                        .screenshots({
+                            timestamps: ['00:00:01'],
+                            filename: thumbnailFilename,
+                            folder: '/mnt/disks/uploads/optimized/',
+                            size: '480x?'
+                        })
+                        .on('end', resolve)
+                        .on('error', reject);
+                });
+                console.log('🎬 Story video thumbnail created:', thumbnailFilename);
+            } catch (thumbError) {
+                console.error('🎬 Story thumbnail generation failed:', thumbError);
+                thumbnailFilename = null;
+            }
         } else {
             return res.status(400).json({ error: "Unsupported media type for stories." });
         }
 
-        // Set expiration time (24 hours from now)
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + 24);
 
-        // Create story in database
-        prisma.story.create({
-            data: {
-                userId: userId,
-                mediaUrl: file.filename,
-                mediaType: mediaType,
-                expiresAt: expiresAt,
-                isActive: true
-            },
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        username: true,
-                        profilePictureUrl: true
+        try {
+            const story = await prisma.story.create({
+                data: {
+                    userId: userId,
+                    mediaUrl: file.filename,
+                    mediaType: mediaType,
+                    thumbnailUrl: thumbnailFilename ? `optimized/${thumbnailFilename}` : null,
+                    expiresAt: expiresAt,
+                    isActive: true
+                },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                            username: true,
+                            profilePictureUrl: true
+                        }
                     }
                 }
-            }
-        })
-        .then(story => {
+            });
+
             console.log('✅ Story created successfully:', story.id);
 
-            // Format response
             const formattedStory = {
                 id: story.id,
                 userId: story.userId,
@@ -219,6 +208,7 @@ router.post("/", verifyToken, (req, res, next) => {
                 userAvatar: story.user.profilePictureUrl,
                 mediaUrl: `/uploads/${story.mediaUrl}`,
                 mediaType: story.mediaType.toLowerCase(),
+                thumbnailUrl: story.thumbnailUrl ? `/uploads/${story.thumbnailUrl}` : null,
                 createdAt: story.createdAt,
                 expiresAt: story.expiresAt,
                 viewed: false,
@@ -227,11 +217,10 @@ router.post("/", verifyToken, (req, res, next) => {
             };
 
             res.status(201).json(formattedStory);
-        })
-        .catch(error => {
+        } catch (error) {
             console.error("❌ Error creating story:", error);
             next(error);
-        });
+        }
     });
 });
 

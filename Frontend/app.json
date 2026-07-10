@@ -3,7 +3,7 @@
     "scheme": "alumniapp",
     "name": "BH Alum",
     "slug": "Frontend",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "orientation": "portrait",
     "icon": "./assets/BH-App-Icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.beaconhouse.alumni",
-      "buildNumber": "18",
+      "buildNumber": "19",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "This app uses the camera to let you take photos to share with fellow alumni in conversations.",

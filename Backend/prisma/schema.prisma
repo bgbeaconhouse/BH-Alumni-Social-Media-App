@@ -316,6 +316,7 @@ model Story {
   // Story content
   mediaUrl    String   // URL to the story image/video file
   mediaType   StoryMediaType // IMAGE or VIDEO
+  thumbnailUrl String?
   
   // Story metadata
   expiresAt   DateTime // When story expires (24 hours from creation)
